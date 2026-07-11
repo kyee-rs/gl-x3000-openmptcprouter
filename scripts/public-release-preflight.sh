@@ -110,7 +110,7 @@ done
 
 printf '%s\n' '== Gitleaks working-tree and history scan =='
 if [[ "${GITLEAKS_PRECHECKED:-0}" == 1 ]]; then
-  printf '%s\n' 'Gitleaks scan delegated to the preceding pinned CI action.'
+  printf '%s\n' 'Gitleaks scan delegated to the pinned action in this CI job.'
 elif ! command -v gitleaks >/dev/null 2>&1; then
   printf '%s\n' 'ERROR: gitleaks is not installed; publication gate remains closed.' >&2
   failures=1
