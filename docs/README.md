@@ -9,6 +9,8 @@ These notes describe a sanitized research path for PCIe cellular support on the 
 - [ModemManager WWAN/QDU fix](modemmanager-wwan-qdu-fix.md): root cause, package-only validation, and rollback implications.
 - [PCIe/MHI implementation](pcie-mhi-implementation.md): exact Quectel profile mapping, early power-management policy, packages, and build assertions.
 - [Validation and rollback](validation-and-rollback.md): staged acceptance gates, bidirectional data proof, soak tests, and recovery criteria.
+- [Runtime commissioning](runtime-commissioning.md): sanitized LAN bridging, Wi-Fi DHCP, ModemManager, and OMR tunnel integration lessons.
+- [MQVPN VPS integration](mqvpn-vps-integration.md): host forwarding, guest firewall/NAT, tunnel naming, verification, and persistence requirements.
 - [References](references.md): primary sources and attribution policy.
 
 ## Publication boundary

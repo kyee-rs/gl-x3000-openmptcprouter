@@ -110,6 +110,8 @@ WAN configuration are separate deployment steps.
 - [ModemManager WWAN/QDU false-positive fix](docs/modemmanager-wwan-qdu-fix.md)
 - [PCIe/MHI implementation notes](docs/pcie-mhi-implementation.md)
 - [Validation and rollback gates](docs/validation-and-rollback.md)
+- [Runtime commissioning lessons](docs/runtime-commissioning.md)
+- [MQVPN VPS integration](docs/mqvpn-vps-integration.md)
 - [Primary references](docs/references.md)
 
 ## Pinned inputs
