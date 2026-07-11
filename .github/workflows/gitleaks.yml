@@ -25,6 +25,11 @@ jobs:
           fetch-depth: 0
           persist-credentials: false
 
+      - name: Install repository-policy dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install --yes --no-install-recommends file ripgrep
+
       - name: Scan repository and history
         uses: gitleaks/gitleaks-action@ff98106e4c7b2bc287b24eaf42907196329070c7 # v2
         env:
