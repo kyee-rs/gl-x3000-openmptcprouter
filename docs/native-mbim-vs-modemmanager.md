@@ -11,7 +11,7 @@ Both designs can be valid. They must not control the same MBIM port simultaneous
 | Best use during bring-up | Yes: fewer moving parts and explicit control port | After kernel topology is known-good |
 | Reconnect/state handling | Protocol-script dependent | Rich modem/bearer state machine |
 | SIM PIN and radio controls | Basic protocol options/tools | Integrated API and state reporting |
-| MHI-specific version concern | Mostly kernel and `umbim` compatibility | Requires correct `mhi-pci-generic` MBIM data-port handling |
+| MHI-specific version concern | Mostly kernel and `umbim` compatibility | Requires correct `mhi-pci-generic` data-port handling and an RM520N WWAN/QDU guard |
 | Port grouping concern | Explicit control device configured | Must group PCIe MHI and any USB-side ports correctly |
 | Failure isolation | Easier to distinguish kernel/MBIM from daemon behavior | Better long-term management when correctly integrated |
 
@@ -64,6 +64,19 @@ This fix is necessary for robust MHI MBIM management, but it does **not** fix:
 - two processes competing for the MBIM control port;
 - an invalid APN, authentication mode, or IP family; or
 - a data channel that transmits but never receives.
+
+### False AT-over-QDU detection on the MHI MBIM port
+
+ModemManager 1.24.2's Quectel plugin treats an advertised QDU command CID as
+proof that the MBIM port can transport AT commands. On the tested RM520N-GL
+PCIe composition, QDU is advertised but Quectel AT commands sent through it do
+not receive responses. ModemManager prefers that presumed AT-capable MBIM port
+over `wwan0at0`; after ten timeouts it invalidates and removes the modem.
+
+The included r6 patch disables AT-over-MBIM only for Quectel MBIM ports in the
+Linux `wwan` subsystem. It preserves USB/usbmisc QDU behavior and allows the
+real MHI AT port to be selected. See the
+[detailed diagnosis and validation record](modemmanager-wwan-qdu-fix.md).
 
 ## Sanitized configuration shapes
 

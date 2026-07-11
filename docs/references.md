@@ -5,6 +5,7 @@ Primary and closely related public sources used for this research:
 - Linux kernel documentation: [MHI overview, states, channels, and data transfer](https://www.kernel.org/doc/html/latest/mhi/mhi.html)
 - Linux kernel source: [`drivers/bus/mhi/host/pci_generic.c`](https://kernel.googlesource.com/pub/scm/linux/kernel/git/torvalds/linux.git/+/master/drivers/bus/mhi/host/pci_generic.c)
 - ModemManager upstream fix: [`broadband-modem-mbim: handle mhi-pci-generic as a valid data port driver`](https://chromium.googlesource.com/external/gitlab.freedesktop.org/mobile-broadband/ModemManager/+/c3ef78cc6c7bc8086f3e2594d434228d92c97356)
+- ModemManager AT-over-MBIM implementation provenance: [`quectel: support at over mbim in quectel modems`](https://chromium.googlesource.com/chromiumos/third_party/modemmanager-next/+/8cbd12a6037e69457f6f56efc5631e6f9b2cf1b8)
 - ModemManager developer discussion: [`mhi-pci-generic` and multiplexing](https://www.mail-archive.com/modemmanager-devel%40lists.freedesktop.org/msg08010.html)
 - Public GL-X3000 OpenWrt fork: [vjt/openwrt-glinet-x3000](https://github.com/vjt/openwrt-glinet-x3000)
 - Public GL-X3000 build guide: [vjt `x3000/README.md`](https://github.com/vjt/openwrt-glinet-x3000/blob/openwrt-25.12/x3000/README.md)

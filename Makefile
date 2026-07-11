@@ -44,6 +44,7 @@ lint:
 	sh -n overlays/openmptcprouter/common/package/base-files/files/etc/uci-defaults/99-cellular-control-owner
 	git apply --numstat < patches/kernel/499-bus-mhi-host-pci-generic-gl-x3000-rm520n-mbim.patch
 	git apply --numstat < patches/modemmanager/010-broadband-modem-mbim-handle-mhi-pci-generic.patch
+	git apply --numstat < patches/modemmanager/011-quectel-disable-at-over-mbim-on-wwan.patch
 	git apply --numstat < patches/openmptcprouter/0001-build-recognize-gl-x3000-aarch64.patch
 	git apply --numstat < patches/openmptcprouter/0002-build-use-versioned-https-apk-feeds.patch
 	git apply --numstat < patches/openmptcprouter-feed/0001-modemmanager-bump-release.patch

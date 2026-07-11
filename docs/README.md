@@ -6,6 +6,7 @@ These notes describe a sanitized research path for PCIe cellular support on the 
 - [Sanitized experiment log](experiment-log.md): what each profile/userspace experiment established and what remains unproven.
 - [Architecture](architecture.md): PCIe, MHI, MBIM, netifd, firewall, and multi-WAN layer boundaries.
 - [Native MBIM vs ModemManager](native-mbim-vs-modemmanager.md): ownership models, the upstream ModemManager fix, and dynamic `_4` interfaces.
+- [ModemManager WWAN/QDU fix](modemmanager-wwan-qdu-fix.md): root cause, package-only validation, and rollback implications.
 - [PCIe/MHI implementation](pcie-mhi-implementation.md): exact Quectel profile mapping, early power-management policy, packages, and build assertions.
 - [Validation and rollback](validation-and-rollback.md): staged acceptance gates, bidirectional data proof, soak tests, and recovery criteria.
 - [References](references.md): primary sources and attribution policy.

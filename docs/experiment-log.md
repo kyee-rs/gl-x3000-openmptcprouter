@@ -114,16 +114,25 @@ Interpretation:
 
 ## What was learned from the sequence
 
+Before the final summary, the preferred exact-profile image was booted and its
+kernel/MHI topology remained stable. ModemManager r5 initially created the
+PCIe object, misclassified its MHI MBIM port as AT-capable because QDU was
+advertised, accumulated ten command timeouts, and removed the object. A signed
+r6 package with the WWAN/QDU guard was installed without changing the kernel.
+The PCIe object then used `wwan0at0`, remained present beyond the prior timeout
+window, and produced no new MHI/PCIe recovery event. A separate USB serial
+object was visible and was not treated as the PCIe data WAN.
+
 1. The GL-X3000-specific subsystem match must select the existing Quectel RM5xx MHI profile before the generic Qualcomm catch-all.
 2. The expected data driver is `mhi_wwan_mbim`; a visible `mhi_net` interface is not an equivalent result.
-3. ModemManager needs both correct port grouping and the upstream `mhi-pci-generic` MBIM data-port fix.
+3. ModemManager needs the upstream `mhi-pci-generic` MBIM data-port fix and must not prefer non-working AT-over-QDU on the MHI MBIM port over `wwan0at0`.
 4. Native MBIM is the smaller diagnostic baseline, but it must be stopped before ModemManager is tested.
 5. Firewall mappings must follow the new netdev, yet RX must also be proven at the netdev itself before blaming higher layers.
 6. The preferred image selects early `pcie_port_pm=off` as its PCIe mitigation;
    post-probe sysfs writes were not a reliable substitute in the observed reset
    path, but the preferred image still requires clean-boot validation.
 7. Repeated live driver replacement is a poor experimental method for a controller whose channel layout and event rings are fixed at probe time.
-8. A bounded development-profile test proved bidirectional PCIe data, but the corrected release image remains unproven until it passes the complete validation matrix.
+8. A bounded development-profile test proved bidirectional PCIe data; the preferred profile and r6 discovery fix now enumerate correctly, but the rebuilt image remains unqualified until it passes the complete validation matrix.
 
 ## Evidence to retain for future tests
 

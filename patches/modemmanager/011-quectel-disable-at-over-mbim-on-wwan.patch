@@ -1,0 +1,36 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: GL-X3000 OpenMPTCProuter contributors <noreply@example.invalid>
+Date: Sat, 11 Jul 2026 00:00:00 +0000
+Subject: [PATCH] quectel: avoid AT over QDU on WWAN MBIM ports
+
+The GL-X3000 RM520N-GL advertises the Qualcomm QDU command CID on its
+PCIe MHI MBIM control port, but AT commands sent through that CID time
+out.  A real WWAN AT port is exposed alongside the MBIM port, so do not
+classify the WWAN MBIM port as AT-capable.  This lets ModemManager use
+the actual serial AT port while preserving AT-over-MBIM behavior for
+USB/usbmisc devices.
+---
+ src/plugins/quectel/mm-port-mbim-quectel.c | 7 ++++++-
+ 1 file changed, 6 insertions(+), 1 deletion(-)
+
+diff --git a/src/plugins/quectel/mm-port-mbim-quectel.c b/src/plugins/quectel/mm-port-mbim-quectel.c
+index 4f71445..3c3a966 100644
+--- a/src/plugins/quectel/mm-port-mbim-quectel.c
++++ b/src/plugins/quectel/mm-port-mbim-quectel.c
+@@ -61,7 +61,12 @@ iface_port_at_check_support (MMIfacePortAt  *_self,
+             return FALSE;
+         }
+ 
+-        if (!mm_port_mbim_supports_command (MM_PORT_MBIM (self), MBIM_SERVICE_QDU, MBIM_CID_QDU_COMMAND)) {
++        if (mm_port_get_subsys (MM_PORT (self)) == MM_PORT_SUBSYS_WWAN) {
++            mm_obj_msg (self, "AT over MBIM disabled on WWAN port");
++            self->priv->at_over_mbim = FEATURE_NOT_SUPPORTED;
++        } else if (!mm_port_mbim_supports_command (MM_PORT_MBIM (self),
++                                                   MBIM_SERVICE_QDU,
++                                                   MBIM_CID_QDU_COMMAND)) {
+             mm_obj_msg (self, "MBIM device is not AT capable");
+             self->priv->at_over_mbim = FEATURE_NOT_SUPPORTED;
+         } else {
+-- 
+2.47.3
+

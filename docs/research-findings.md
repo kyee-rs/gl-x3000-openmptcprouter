@@ -4,7 +4,7 @@ This document records sanitized engineering findings for the GL.iNet GL-X3000 (S
 
 ## Result in one paragraph
 
-PCIe cellular support is feasible with the upstream Linux MHI/WWAN stack; a proprietary driver is not inherently required. The important pieces are: map the GL-X3000 modem's Qualcomm PCI subsystem identity to Linux's existing Quectel RM5xx profile, expose the `MBIM` control channels and `IP_HW0_MBIM` data channels, load `mhi_wwan_mbim`, prevent the PCIe root port from entering a problematic low-power transition during early MHI startup, and give exactly one userspace connection manager ownership of the MBIM control port. ModemManager also needs its upstream `mhi-pci-generic` data-port fix when using a release that predates it. A build is not considered working until bidirectional traffic, reconnect, and repeated cold boot tests pass.
+PCIe cellular support is feasible with the upstream Linux MHI/WWAN stack; a proprietary driver is not inherently required. The important pieces are: map the GL-X3000 modem's Qualcomm PCI subsystem identity to Linux's existing Quectel RM5xx profile, expose the `MBIM` control channels and `IP_HW0_MBIM` data channels, load `mhi_wwan_mbim`, prevent the PCIe root port from entering a problematic low-power transition during early MHI startup, and give exactly one userspace connection manager ownership of the MBIM control port. ModemManager 1.24.2 needs both its upstream `mhi-pci-generic` data-port fix and a guard against false AT-over-QDU detection on the RM520N's MHI MBIM port. A build is not considered working until bidirectional traffic, reconnect, and repeated cold boot tests pass.
 
 ## Confidence labels
 
@@ -26,9 +26,10 @@ PCIe cellular support is feasible with the upstream Linux MHI/WWAN stack; a prop
 | Native MBIM | A native MBIM manager can register, attach, activate, and receive an IPv4 configuration when the correct MHI profile is present. | Lab observation |
 | ModemManager selection | When USB AT ports and PCIe MHI ports are visible at the same time, an older or incorrectly integrated ModemManager can group/select the wrong surface and attempt an AT/PPP-style connection instead of PCIe MBIM. | Lab observation |
 | ModemManager MHI handling | Upstream ModemManager commit `c3ef78cc6c7bc8086f3e2594d434228d92c97356` recognizes `mhi-pci-generic` as a valid MBIM data-port driver. Older builds may mishandle data-port lookup, stale links, or multiplexing. | Upstream fact |
+| ModemManager QDU handling | The tested RM520N-GL advertises QDU on its MHI MBIM port but does not answer Quectel AT-over-QDU commands. ModemManager 1.24.2 then reaches its ten-timeout invalidation threshold unless WWAN MBIM AT support is disabled so `wwan0at0` is used. | Lab observation; r6 fix validated live |
 | Dynamic IPv4 interface | OpenWrt mobile protocol handlers may create `<logical-name>_4` as the IPv4 child interface. It is a netifd object, not another modem or physical port. | Upstream/OpenWrt behavior |
 | Development-profile data proof | After a clean reboot with the simplified modem policy, a development MBIM profile completed a native MBIM session and passed bound external traffic with both RX and TX counters increasing. This proves that PCIe cellular data is feasible on the hardware, but it does not validate the final exact-profile image. | Lab observation |
-| Target-image status | The final design uses the upstream Quectel profile plus the early boot argument, a combination not yet boot-tested in this research sequence. It must independently prove RX, resets, reconnects, and cold boots before release. | Open question |
+| Target-image status | The exact Quectel profile plus early boot argument has booted with stable PCIe/MHI enumeration. A live-installed r6 ModemManager package retained the PCIe object and selected the MHI AT port. The rebuilt r6 image still requires full traffic, reset, reconnect, and repeated cold-boot qualification. | Lab observation plus open release tests |
 
 ## What the failure was not
 

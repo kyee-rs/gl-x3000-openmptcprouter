@@ -32,6 +32,8 @@ Also verify:
 - the final device tree, not only the source fragment, contains the boot argument;
 - the kernel PCI table contains the specific subsystem match before the generic match;
 - package signatures are valid under the image's trust policy; and
+- ModemManager is release r6 and its binary contains both `mhi-pci-generic`
+  and `AT over MBIM disabled on WWAN port`; and
 - a secret scan finds no credentials, private keys, tokens, private endpoints, subscriber identifiers, or factory data.
 
 ## Post-boot acceptance gates
@@ -145,6 +147,10 @@ When ModemManager is selected:
 - confirm the modem object uses the PCIe MHI physical parent;
 - confirm the control port is MBIM and the data port is the `mhi_wwan_mbim` netdev;
 - confirm reserved USB tty ports are either deliberately grouped or deliberately ignored;
+- confirm the PCIe object includes `wwan0at0 (at)` and survives at least two
+  minutes without a ten-timeout invalidation;
+- treat any separate USB serial object as a different surface; select the
+  object whose physical parent is PCIe and whose ports include MHI MBIM;
 - connect, disconnect, and reconnect without stale multiplexed links; and
 - repeat Gate 4 after every reconnect.
 

@@ -63,29 +63,35 @@ require_config 'CONFIG_MODEMMANAGER_WITH_MBIM=y'
 
 readonly KERNEL_PATCH="$OMR_DIR/6.18/target/linux/generic/pending-6.18/499-bus-mhi-host-pci-generic-gl-x3000-rm520n-mbim.patch"
 readonly DTS_SOURCE="$OMR_DIR/6.18/target/linux/mediatek/dts/mt7981a-glinet-gl-x3000.dts"
-readonly MM_PATCH="$OMR_FEED_DIR/modemmanager/patches/010-broadband-modem-mbim-handle-mhi-pci-generic.patch"
+readonly MM_MHI_PATCH="$OMR_FEED_DIR/modemmanager/patches/010-broadband-modem-mbim-handle-mhi-pci-generic.patch"
+readonly MM_QDU_PATCH="$OMR_FEED_DIR/modemmanager/patches/011-quectel-disable-at-over-mbim-on-wwan.patch"
 readonly OWNER_GUARD="$OMR_DIR/common/package/base-files/files/etc/uci-defaults/99-cellular-control-owner"
 require_file "$KERNEL_PATCH"
 require_file "$DTS_SOURCE"
-require_file "$MM_PATCH"
+require_file "$MM_MHI_PATCH"
+require_file "$MM_QDU_PATCH"
 require_file "$OWNER_GUARD"
 [[ -x "$OWNER_GUARD" ]] || fail 'cellular ownership guard is not executable'
 cmp -s "$KERNEL_PATCH" "$KIT_DIR/patches/kernel/499-bus-mhi-host-pci-generic-gl-x3000-rm520n-mbim.patch" \
     || fail 'kernel patch differs from the audited build-kit copy'
 cmp -s "$DTS_SOURCE" "$KIT_DIR/overlays/openmptcprouter/6.18/target/linux/mediatek/dts/mt7981a-glinet-gl-x3000.dts" \
     || fail 'GL-X3000 DTS differs from the audited build-kit copy'
-cmp -s "$MM_PATCH" "$KIT_DIR/patches/modemmanager/010-broadband-modem-mbim-handle-mhi-pci-generic.patch" \
-    || fail 'ModemManager patch differs from the audited build-kit copy'
+cmp -s "$MM_MHI_PATCH" "$KIT_DIR/patches/modemmanager/010-broadband-modem-mbim-handle-mhi-pci-generic.patch" \
+    || fail 'ModemManager MHI patch differs from the audited build-kit copy'
+cmp -s "$MM_QDU_PATCH" "$KIT_DIR/patches/modemmanager/011-quectel-disable-at-over-mbim-on-wwan.patch" \
+    || fail 'ModemManager WWAN QDU patch differs from the audited build-kit copy'
 cmp -s "$OWNER_GUARD" "$KIT_DIR/overlays/openmptcprouter/common/package/base-files/files/etc/uci-defaults/99-cellular-control-owner" \
     || fail 'cellular ownership guard differs from the audited build-kit copy'
 grep -Fqx 'LINUX_VERSION-6.18 = .34' "$SOURCE_ROOT/target/linux/generic/kernel-6.18" \
     || fail 'unexpected Linux 6.18 point release'
-grep -Fqx 'PKG_RELEASE:=5' "$OMR_FEED_DIR/modemmanager/Makefile" \
-    || fail 'ModemManager package release was not bumped for the backport'
+grep -Fqx 'PKG_RELEASE:=6' "$OMR_FEED_DIR/modemmanager/Makefile" \
+    || fail 'ModemManager package release was not bumped for both fixes'
 grep -Fq 'mhi_quectel_rm5xx_info' "$KERNEL_PATCH" || fail 'kernel patch does not select the upstream Quectel profile'
 grep -Fq 'PCI_DEVICE_SUB(PCI_VENDOR_ID_QCOM, 0x0308, PCI_VENDOR_ID_QCOM, 0x5201)' "$KERNEL_PATCH" || fail 'kernel patch has the wrong PCI subsystem match'
 grep -Fq 'bootargs-append = " pcie_port_pm=off";' "$DTS_SOURCE" || fail 'DTS lacks early PCIe port-PM disable'
-grep -Fq "$MODEMMANAGER_BACKPORT" "$MM_PATCH" || fail 'ModemManager backport provenance is missing'
+grep -Fq "$MODEMMANAGER_BACKPORT" "$MM_MHI_PATCH" || fail 'ModemManager backport provenance is missing'
+grep -Fq 'AT over MBIM disabled on WWAN port' "$MM_QDU_PATCH" \
+    || fail 'ModemManager WWAN QDU guard marker is missing'
 grep -Fq 'https://packages.openmptcprouter.com/${OMR_RELEASE}-${OMR_KERNEL}/${OMR_REAL_TARGET}/luci/packages.adb' "$OMR_DIR/build.sh" \
     || fail 'OMR build script lacks versioned HTTPS APK feeds'
 
@@ -119,6 +125,11 @@ mapfile -t mm_binaries < <(find "$SOURCE_ROOT/build_dir" -type f \
     -path '*/root-mediatek/usr/sbin/ModemManager' -print | sort)
 [[ "${#mm_binaries[@]}" -gt 0 ]] || fail 'installed ModemManager binary not found'
 require_string "${mm_binaries[0]}" mhi-pci-generic
+require_string "${mm_binaries[0]}" 'AT over MBIM disabled on WWAN port'
+
+mapfile -t mm_packages < <(find "$SOURCE_ROOT/bin/packages" -type f \
+    -name "modemmanager-${MODEMMANAGER_VERSION}-r6.apk" -print | sort)
+[[ "${#mm_packages[@]}" -gt 0 ]] || fail 'ModemManager r6 APK not found'
 
 readonly TARGET_BIN_DIR="$SOURCE_ROOT/bin/targets/mediatek/filogic"
 mapfile -t images < <(find "$TARGET_BIN_DIR" -maxdepth 1 -type f \
@@ -152,7 +163,8 @@ printf 'OMR=%s\n' "$OMR_COMMIT"
 printf 'OMR_FEED=%s\n' "$OMR_FEED_COMMIT"
 printf 'OPENWRT=%s\n' "$OPENWRT_COMMIT"
 printf 'KERNEL=%s\n' "$LINUX_VERSION"
-printf 'MODEMMANAGER=%s+%s\n' "$MODEMMANAGER_VERSION" "$MODEMMANAGER_BACKPORT"
+printf 'MODEMMANAGER=%s+%s+%s\n' \
+    "$MODEMMANAGER_VERSION" "$MODEMMANAGER_BACKPORT" "$MODEMMANAGER_QDU_GUARD"
 printf 'IMAGE_SHA256='
 sha256sum "${images[0]}" | awk '{print $1}'
 printf 'VALIDATION=passed\n'

@@ -10,16 +10,18 @@ backup data, and it never connects to or flashes a router.
 
 This is an R&D build kit, not a production firmware release. The pinned image
 recipe has passed offline checks for target metadata, device-tree arguments,
-kernel topology, package contents, and the ModemManager backport. The preferred
-combination—upstream Quectel RM5xx profile plus early PCIe port-PM disable—still
-needs cold-boot, reset, reconnect, sustained RX/TX, and multi-WAN validation on
-real hardware before it should be called stable.
+kernel topology, package contents, and the ModemManager patches. The preferred
+kernel combination—upstream Quectel RM5xx profile plus early PCIe port-PM
+disable—has booted on real hardware with stable MHI/MBIM enumeration. The
+ModemManager r6 package has also passed live discovery and persistence testing.
+Reset, repeated cold boot, sustained RX/TX, reconnect, and multi-WAN validation
+are still required before this should be called stable.
 
 A separate development profile proved that the built-in modem can carry
 bidirectional PCIe/MBIM traffic. That experimental channel table is documented
 for research context but intentionally excluded from this build kit.
 
-The build carries five narrowly scoped integration fixes:
+The build carries six narrowly scoped integration fixes:
 
 1. Match PCI ID `17cb:0308`, subsystem `17cb:5201`, to the existing upstream
    `mhi_quectel_rm5xx_info` profile. This exposes `MBIM` control and
@@ -29,9 +31,12 @@ The build carries five narrowly scoped integration fixes:
 3. Backport upstream ModemManager commit
    `c3ef78cc6c7bc8086f3e2594d434228d92c97356`, which recognizes
    `mhi-pci-generic` as the data-port driver used by `mhi_wwan_mbim`.
-4. Generate version-matched HTTPS package feeds instead of embedding a build
+4. Disable Quectel AT-over-QDU selection on Linux `wwan` MBIM ports. The
+   RM520N-GL advertises QDU on PCIe MHI but does not answer AT commands through
+   it; the guard makes ModemManager use the real MHI AT port instead.
+5. Generate version-matched HTTPS package feeds instead of embedding a build
    host or an outdated plaintext feed path.
-5. Include a first-boot ownership guard: if any preserved interface uses native
+6. Include a first-boot ownership guard: if any preserved interface uses native
    MBIM, it disables ModemManager before the daemon can compete for a control
    port. Otherwise an explicit ModemManager interface does not disable it.
 
@@ -75,7 +80,8 @@ make validate
 
 ## Scope and runtime choice
 
-The ModemManager backport fixes MBIM data-port association. It does not turn
+The ModemManager patches fix MBIM data-port association and the RM520N's false
+AT-over-QDU selection. They do not turn
 an unrelated USB AT-only/PPP modem object into the PCIe modem. A runtime WAN
 must select the PCIe MHI/MBIM device. Native netifd `proto=mbim` remains a
 valid alternative and does not require ModemManager to own the control port.
@@ -99,6 +105,7 @@ WAN configuration are separate deployment steps.
 - [Sanitized experiment sequence](docs/experiment-log.md)
 - [Cellular architecture](docs/architecture.md)
 - [Native MBIM versus ModemManager](docs/native-mbim-vs-modemmanager.md)
+- [ModemManager WWAN/QDU false-positive fix](docs/modemmanager-wwan-qdu-fix.md)
 - [PCIe/MHI implementation notes](docs/pcie-mhi-implementation.md)
 - [Validation and rollback gates](docs/validation-and-rollback.md)
 - [Primary references](docs/references.md)

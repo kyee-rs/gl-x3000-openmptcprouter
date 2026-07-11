@@ -95,6 +95,12 @@ The [Arachsys GL-X3000 recipe](https://github.com/arachsys-hosts/gl-x3000) docum
 
 If the production image uses ModemManager, include upstream commit [`c3ef78cc6c7bc8086f3e2594d434228d92c97356`](https://chromium.googlesource.com/external/gitlab.freedesktop.org/mobile-broadband/ModemManager/+/c3ef78cc6c7bc8086f3e2594d434228d92c97356) or a newer release containing it. The commit recognizes `mhi-pci-generic` as an MBIM data-port driver.
 
+For ModemManager 1.24.2 on this RM520N-GL MHI composition, also include the
+WWAN/QDU guard documented in
+[ModemManager WWAN/QDU false-positive fix](modemmanager-wwan-qdu-fix.md).
+Without it, advertised QDU support makes the daemon prefer non-working
+AT-over-MBIM over the real MHI AT port and eventually discard the modem.
+
 For OpenWrt builds compiled without udev, also review the hotplug scripts that call `mmcli --report-kernel-event`. Ensure any tty exclusion mechanism is deterministic and documented; do not rely on desktop udev rules that are absent from the image.
 
 ## 7. Build-time assertions
@@ -108,5 +114,5 @@ The build should fail before producing a release if any assertion is false:
 - the image may contain both native MBIM and ModemManager tooling, but deployment documentation must select exactly one runtime owner;
 - generated package repositories use only the version-matched public HTTPS OMR endpoints;
 - the first-boot owner guard is present and executable;
-- a ModemManager build contains the upstream MHI data-driver fix; and
+- a ModemManager build contains the upstream MHI data-driver fix and the WWAN/QDU guard; and
 - public overlays contain no keys, credentials, SIM settings, hostnames, addresses, or unit calibration data.

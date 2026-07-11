@@ -1,14 +1,14 @@
 From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
 From: GL-X3000 OpenMPTCProuter contributors <noreply@example.invalid>
 Date: Sat, 11 Jul 2026 00:00:00 +0000
-Subject: [PATCH] modemmanager: bump release for MHI MBIM backport
+Subject: [PATCH] modemmanager: bump release for GL-X3000 MHI/MBIM fixes
 
 ---
  modemmanager/Makefile | 2 +-
  1 file changed, 1 insertion(+), 1 deletion(-)
 
 diff --git a/modemmanager/Makefile b/modemmanager/Makefile
-index 850c1d0..2a12d53 100644
+index 850c1d0..7b7ff32 100644
 --- a/modemmanager/Makefile
 +++ b/modemmanager/Makefile
 @@ -8,7 +8,7 @@ include $(TOPDIR)/rules.mk
@@ -16,10 +16,9 @@ index 850c1d0..2a12d53 100644
  PKG_NAME:=modemmanager
  PKG_VERSION:=1.24.2
 -PKG_RELEASE:=4
-+PKG_RELEASE:=5
++PKG_RELEASE:=6
  
  PKG_SOURCE_PROTO:=git
  PKG_SOURCE_URL:=https://gitlab.freedesktop.org/mobile-broadband/ModemManager.git
 -- 
 2.47.3
-
