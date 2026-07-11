@@ -1,0 +1,31 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: GL-X3000 OpenMPTCProuter contributors <noreply@example.invalid>
+Date: Sat, 11 Jul 2026 00:00:00 +0000
+Subject: [PATCH] build: use versioned HTTPS APK package feeds
+
+The release number exposed by the generated image includes the kernel series.
+Keep custom APK feeds on the matching versioned namespace and avoid plaintext
+HTTP URLs.
+---
+ build.sh | 10 +++++-----
+ 1 file changed, 5 insertions(+), 5 deletions(-)
+
+diff --git a/build.sh b/build.sh
+--- a/build.sh
++++ b/build.sh
+@@ -274,10 +274,10 @@ else
+ 	if [ "$OMR_DIST" = "openmptcprouter" ]; then
+ 		cat > "$OMR_TARGET/${OMR_KERNEL}/source/package/system/apk/files/customfeeds.list" <<-EOF
+-		http://packages.openmptcprouter.com/${OMR_RELEASE}/${OMR_REAL_TARGET}/luci/packages.adb
+-		http://packages.openmptcprouter.com/${OMR_RELEASE}/${OMR_REAL_TARGET}/packages/packages.adb
+-		http://packages.openmptcprouter.com/${OMR_RELEASE}/${OMR_REAL_TARGET}/base/packages.adb
+-		http://packages.openmptcprouter.com/${OMR_RELEASE}/${OMR_REAL_TARGET}/routing/packages.adb
+-		http://packages.openmptcprouter.com/${OMR_RELEASE}/${OMR_REAL_TARGET}/telephony/packages.adb
++		https://packages.openmptcprouter.com/${OMR_RELEASE}-${OMR_KERNEL}/${OMR_REAL_TARGET}/luci/packages.adb
++		https://packages.openmptcprouter.com/${OMR_RELEASE}-${OMR_KERNEL}/${OMR_REAL_TARGET}/packages/packages.adb
++		https://packages.openmptcprouter.com/${OMR_RELEASE}-${OMR_KERNEL}/${OMR_REAL_TARGET}/base/packages.adb
++		https://packages.openmptcprouter.com/${OMR_RELEASE}-${OMR_KERNEL}/${OMR_REAL_TARGET}/routing/packages.adb
++		https://packages.openmptcprouter.com/${OMR_RELEASE}-${OMR_KERNEL}/${OMR_REAL_TARGET}/telephony/packages.adb
+ 		EOF
+ 	elif [ -n "$OMR_PACKAGES_URL" ]; then
+ 		cat > "$OMR_TARGET/${OMR_KERNEL}/source/package/system/apk/files/customfeeds.list" <<-EOF

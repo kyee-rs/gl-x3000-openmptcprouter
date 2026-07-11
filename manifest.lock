@@ -1,0 +1,21 @@
+# Audited source revisions for the GL-X3000 build.
+# This file is sourced by build.sh; keep values shell-safe and unquoted.
+
+OMR_REPOSITORY=https://github.com/Ysurac/openmptcprouter.git
+OMR_COMMIT=96f3434dcd811c935e66b3537f05bc56debad363
+OMR_FEED_REPOSITORY=https://github.com/ysurac/openmptcprouter-feeds.git
+OMR_FEED_COMMIT=35fe2941da0f327125c3314052e3c69955ba6b43
+
+# These are pinned by the OMR build script at OMR_COMMIT. Validation checks
+# them after the source trees have been prepared.
+OPENWRT_COMMIT=1ac7a562efe9aca9973d188a69d63306c3de081c
+OPENWRT_PACKAGES_COMMIT=b58f27d3207874d16a0cb03fcddfd5e075600b17
+OPENWRT_LUCI_COMMIT=46cd82328dfb7fbb15961c63f9e674a41cef2500
+OPENWRT_ROUTING_COMMIT=6ea029dcc96645836d34dbed56c05e7468916fdc
+
+OMR_TARGET=gl-x3000
+OMR_KERNEL=6.18
+OMR_RELEASE=v0.64-snapshot
+LINUX_VERSION=6.18.34
+MODEMMANAGER_VERSION=1.24.2
+MODEMMANAGER_BACKPORT=c3ef78cc6c7bc8086f3e2594d434228d92c97356

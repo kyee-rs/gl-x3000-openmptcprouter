@@ -1,0 +1,45 @@
+From c3ef78cc6c7bc8086f3e2594d434228d92c97356 Mon Sep 17 00:00:00 2001
+From: Dan Williams <dan@ioncontrol.co>
+Date: Mon, 29 Sep 2025 09:26:48 -0500
+Subject: [PATCH] broadband-modem-mbim: handle mhi-pci-generic as a valid
+ data port driver
+
+mhi_wwan_mbim ends up being detected as mhi-pci-generic, so we need to
+look for that in addition to cdc_wwan when doing MBIM data port stuff.
+Otherwise devices (various Foxconn X55/X72, Cinterion MV3x, Quectel
+EM1xx, Telit FN990) that expose the IP_HW0_MBIM MHI channel won't
+correctly clean up data ports on startup, and may not correctly
+handle bearer multiplexing.
+
+mhi_net is only used for QMI devices with rmnet so it shouldn't be
+involved in the MBIM data path at all.
+
+Signed-off-by: Dan Williams <dan@ioncontrol.co>
+---
+ src/mm-broadband-modem-mbim.c | 4 ++--
+ 1 file changed, 2 insertions(+), 2 deletions(-)
+
+diff --git a/src/mm-broadband-modem-mbim.c b/src/mm-broadband-modem-mbim.c
+index ee11d22..e752c27 100644
+--- a/src/mm-broadband-modem-mbim.c
++++ b/src/mm-broadband-modem-mbim.c
+@@ -344,7 +344,7 @@ peek_port_mbim_for_data (MMBroadbandModemMbim  *self,
+     g_assert (mm_port_get_subsys (data) == MM_PORT_SUBSYS_NET);
+ 
+     net_port_driver = mm_kernel_device_get_driver (mm_port_peek_kernel_device (data));
+-    if (g_strcmp0 (net_port_driver, "cdc_mbim") != 0 && g_strcmp0 (net_port_driver, "mhi_net")) {
++    if (g_strcmp0 (net_port_driver, "cdc_mbim") && g_strcmp0 (net_port_driver, "mhi-pci-generic")) {
+         g_set_error (error,
+                      MM_CORE_ERROR,
+                      MM_CORE_ERROR_FAILED,
+@@ -354,7 +354,7 @@ peek_port_mbim_for_data (MMBroadbandModemMbim  *self,
+         return NULL;
+     }
+ 
+-    if (!g_strcmp0 (net_port_driver, "mhi_net"))
++    if (!g_strcmp0 (net_port_driver, "mhi-pci-generic"))
+         return mm_broadband_modem_mbim_peek_port_mbim (self);
+ 
+     net_port_parent_path = mm_kernel_device_get_interface_sysfs_path (mm_port_peek_kernel_device (data));
+-- 
+2.47.3

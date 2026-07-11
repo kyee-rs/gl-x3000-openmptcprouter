@@ -1,0 +1,16 @@
+CONFIG_TARGET_mediatek=y
+CONFIG_TARGET_mediatek_filogic=y
+CONFIG_TARGET_mediatek_filogic_DEVICE_glinet_gl-x3000=y
+CONFIG_KERNEL_ARM64_MODULE_PLTS=y
+
+# PCIe MHI control and MBIM data path for the built-in RM520N-GL.
+CONFIG_PACKAGE_kmod-mhi-bus=y
+CONFIG_PACKAGE_kmod-mhi-pci-generic=y
+# CONFIG_PACKAGE_kmod-mhi-net is not set
+CONFIG_PACKAGE_kmod-mhi-wwan-ctrl=y
+CONFIG_PACKAGE_kmod-mhi-wwan-mbim=y
+
+# Keep ModemManager available, with the upstream MHI/MBIM association fix.
+CONFIG_PACKAGE_modemmanager=y
+CONFIG_MODEMMANAGER_WITH_NETIFD=y
+CONFIG_MODEMMANAGER_WITH_MBIM=y

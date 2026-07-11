@@ -1,0 +1,13 @@
+// SPDX-License-Identifier: GPL-2.0-or-later OR MIT
+
+#include "mt7981a-glinet-gl-x3000-xe3000-common.dtsi"
+
+/ {
+	model = "GL.iNet GL-X3000";
+	compatible = "glinet,gl-x3000", "mediatek,mt7981";
+};
+
+&{/chosen} {
+	/* Keep the built-in modem's PCIe link out of the D3hot/AER path. */
+	bootargs-append = " pcie_port_pm=off";
+};

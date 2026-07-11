@@ -1,0 +1,34 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: GL-X3000 OpenMPTCProuter contributors <noreply@example.invalid>
+Date: Sat, 11 Jul 2026 00:00:00 +0000
+Subject: [PATCH] bus: mhi: host: map GL-X3000 RM520N to Quectel profile
+
+The RM520N-GL fitted to the GL-X3000 exposes Qualcomm SDX65 IDs
+17cb:0308 with subsystem 17cb:5201. Match that subsystem before the
+generic SDX65 entry so the existing upstream Quectel RM5xx channel
+layout is selected, including MBIM control and IP_HW0_MBIM data.
+
+This deliberately reuses mhi_quectel_rm5xx_info unchanged. It does not
+introduce an experimental channel table, no_m3 override, firmware blob,
+or proprietary driver.
+---
+ drivers/bus/mhi/host/pci_generic.c | 3 +++
+ 1 file changed, 3 insertions(+)
+
+diff --git a/drivers/bus/mhi/host/pci_generic.c b/drivers/bus/mhi/host/pci_generic.c
+index 8c4330123412..c73ebf28b361 100644
+--- a/drivers/bus/mhi/host/pci_generic.c
++++ b/drivers/bus/mhi/host/pci_generic.c
+@@ -913,6 +913,9 @@ static const struct pci_device_id mhi_pci_id_table[] = {
+ 		.driver_data = (kernel_ulong_t) &mhi_telit_fn980_hw_v1_info },
+ 	{ PCI_DEVICE(PCI_VENDOR_ID_QCOM, 0x0306),
+ 		.driver_data = (kernel_ulong_t) &mhi_qcom_sdx55_info },
++	/* RM520N-GL variant fitted to the GL.iNet GL-X3000 */
++	{ PCI_DEVICE_SUB(PCI_VENDOR_ID_QCOM, 0x0308, PCI_VENDOR_ID_QCOM, 0x5201),
++		.driver_data = (kernel_ulong_t) &mhi_quectel_rm5xx_info },
+ 	/* Telit FN990 */
+ 	{ PCI_DEVICE_SUB(PCI_VENDOR_ID_QCOM, 0x0308, 0x1c5d, 0x2010),
+ 		.driver_data = (kernel_ulong_t) &mhi_telit_fn990_info },
+-- 
+2.47.3
+
