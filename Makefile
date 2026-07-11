@@ -47,6 +47,7 @@ lint:
 	git apply --numstat < patches/modemmanager/011-quectel-disable-at-over-mbim-on-wwan.patch
 	git apply --numstat < patches/openmptcprouter/0001-build-recognize-gl-x3000-aarch64.patch
 	git apply --numstat < patches/openmptcprouter/0002-build-use-versioned-https-apk-feeds.patch
+	git apply --numstat < patches/openmptcprouter/0003-linux-6.18-fix-bbr-div-u64.patch
 	git apply --numstat < patches/openmptcprouter-feed/0001-modemmanager-bump-release.patch
 
 preflight: lint

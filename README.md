@@ -21,7 +21,7 @@ A separate development profile proved that the built-in modem can carry
 bidirectional PCIe/MBIM traffic. That experimental channel table is documented
 for research context but intentionally excluded from this build kit.
 
-The build carries six narrowly scoped integration fixes:
+The build carries seven narrowly scoped integration fixes:
 
 1. Match PCI ID `17cb:0308`, subsystem `17cb:5201`, to the existing upstream
    `mhi_quectel_rm5xx_info` profile. This exposes `MBIM` control and
@@ -34,9 +34,11 @@ The build carries six narrowly scoped integration fixes:
 4. Disable Quectel AT-over-QDU selection on Linux `wwan` MBIM ports. The
    RM520N-GL advertises QDU on PCIe MHI but does not answer AT commands through
    it; the guard makes ModemManager use the real MHI AT port instead.
-5. Generate version-matched HTTPS package feeds instead of embedding a build
+5. Correct the pinned OMR BBRv3 patch for Linux 6.18's two-argument
+   `div_u64()` API so clean target builds compile successfully.
+6. Generate version-matched HTTPS package feeds instead of embedding a build
    host or an outdated plaintext feed path.
-6. Include a first-boot ownership guard: if any preserved interface uses native
+7. Include a first-boot ownership guard: if any preserved interface uses native
    MBIM, it disables ModemManager before the daemon can compete for a control
    port. Otherwise an explicit ModemManager interface does not disable it.
 

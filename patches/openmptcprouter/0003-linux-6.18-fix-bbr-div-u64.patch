@@ -1,0 +1,28 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: GL-X3000 OpenMPTCProuter contributors <noreply@example.invalid>
+Date: Sat, 11 Jul 2026 00:00:00 +0000
+Subject: [PATCH] linux-6.18: fix BBRv3 div_u64 invocation
+
+Linux 6.18 provides div_u64(dividend, divisor). The generated BBRv3
+patch in this pinned OMR revision accidentally passes a single divided
+expression, which fails while compiling net/ipv4/tcp_bbr.c.
+---
+ ...-bbr-v3-update-TCP-bbr-congestion-control-module-.patch | 2 +-
+ 1 file changed, 1 insertion(+), 1 deletion(-)
+
+diff --git a/6.18/target/linux/generic/hack-6.18/999-tcp_bbr-v3-update-TCP-bbr-congestion-control-module-.patch b/6.18/target/linux/generic/hack-6.18/999-tcp_bbr-v3-update-TCP-bbr-congestion-control-module-.patch
+index 91955a49..5b53f76a 100644
+--- a/6.18/target/linux/generic/hack-6.18/999-tcp_bbr-v3-update-TCP-bbr-congestion-control-module-.patch
++++ b/6.18/target/linux/generic/hack-6.18/999-tcp_bbr-v3-update-TCP-bbr-congestion-control-module-.patch
+@@ -888,7 +888,7 @@ index 760941e55153..9279be755c16 100644
+ +	}
+ +
+ +	bytes = min_t(u32, bytes, gso_max_size - 1 - MAX_TCP_HEADER);
+-+	segs = max_t(u32, div_u64(bytes / mss_now),
+++	segs = max_t(u32, div_u64(bytes, mss_now),
+ +		     sock_net(sk)->ipv4.sysctl_tcp_min_tso_segs);
+ +	return segs;
+ +}
+-- 
+2.47.3
+

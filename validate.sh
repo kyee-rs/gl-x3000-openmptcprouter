@@ -62,11 +62,13 @@ require_config 'CONFIG_MODEMMANAGER_WITH_NETIFD=y'
 require_config 'CONFIG_MODEMMANAGER_WITH_MBIM=y'
 
 readonly KERNEL_PATCH="$OMR_DIR/6.18/target/linux/generic/pending-6.18/499-bus-mhi-host-pci-generic-gl-x3000-rm520n-mbim.patch"
+readonly BBR_PATCH="$OMR_DIR/6.18/target/linux/generic/hack-6.18/999-tcp_bbr-v3-update-TCP-bbr-congestion-control-module-.patch"
 readonly DTS_SOURCE="$OMR_DIR/6.18/target/linux/mediatek/dts/mt7981a-glinet-gl-x3000.dts"
 readonly MM_MHI_PATCH="$OMR_FEED_DIR/modemmanager/patches/010-broadband-modem-mbim-handle-mhi-pci-generic.patch"
 readonly MM_QDU_PATCH="$OMR_FEED_DIR/modemmanager/patches/011-quectel-disable-at-over-mbim-on-wwan.patch"
 readonly OWNER_GUARD="$OMR_DIR/common/package/base-files/files/etc/uci-defaults/99-cellular-control-owner"
 require_file "$KERNEL_PATCH"
+require_file "$BBR_PATCH"
 require_file "$DTS_SOURCE"
 require_file "$MM_MHI_PATCH"
 require_file "$MM_QDU_PATCH"
@@ -87,6 +89,10 @@ grep -Fqx 'LINUX_VERSION-6.18 = .34' "$SOURCE_ROOT/target/linux/generic/kernel-6
 grep -Fqx 'PKG_RELEASE:=6' "$OMR_FEED_DIR/modemmanager/Makefile" \
     || fail 'ModemManager package release was not bumped for both fixes'
 grep -Fq 'mhi_quectel_rm5xx_info' "$KERNEL_PATCH" || fail 'kernel patch does not select the upstream Quectel profile'
+grep -Fq 'div_u64(bytes, mss_now)' "$BBR_PATCH" || fail 'BBRv3 div_u64 compatibility fix is missing'
+if grep -Fq 'div_u64(bytes / mss_now)' "$BBR_PATCH"; then
+    fail 'obsolete one-argument BBRv3 div_u64 call is still present'
+fi
 grep -Fq 'PCI_DEVICE_SUB(PCI_VENDOR_ID_QCOM, 0x0308, PCI_VENDOR_ID_QCOM, 0x5201)' "$KERNEL_PATCH" || fail 'kernel patch has the wrong PCI subsystem match'
 grep -Fq 'bootargs-append = " pcie_port_pm=off";' "$DTS_SOURCE" || fail 'DTS lacks early PCIe port-PM disable'
 grep -Fq "$MODEMMANAGER_BACKPORT" "$MM_MHI_PATCH" || fail 'ModemManager backport provenance is missing'

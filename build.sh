@@ -96,6 +96,9 @@ apply_patch_exact \
     "$OMR_DIR" \
     "$KIT_DIR/patches/openmptcprouter/0002-build-use-versioned-https-apk-feeds.patch"
 apply_patch_exact \
+    "$OMR_DIR" \
+    "$KIT_DIR/patches/openmptcprouter/0003-linux-6.18-fix-bbr-div-u64.patch"
+apply_patch_exact \
     "$OMR_FEED_DIR" \
     "$KIT_DIR/patches/openmptcprouter-feed/0001-modemmanager-bump-release.patch"
 
