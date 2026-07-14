@@ -67,13 +67,19 @@ readonly DTS_SOURCE="$OMR_DIR/6.18/target/linux/mediatek/dts/mt7981a-glinet-gl-x
 readonly MM_MHI_PATCH="$OMR_FEED_DIR/modemmanager/patches/010-broadband-modem-mbim-handle-mhi-pci-generic.patch"
 readonly MM_QDU_PATCH="$OMR_FEED_DIR/modemmanager/patches/011-quectel-disable-at-over-mbim-on-wwan.patch"
 readonly OWNER_GUARD="$OMR_DIR/common/package/base-files/files/etc/uci-defaults/99-cellular-control-owner"
+readonly FW4_COMPAT="$OMR_DIR/common/package/base-files/files/etc/uci-defaults/99-fw4-videochat-compat"
+readonly MPTCP_SYNC="$OMR_DIR/common/package/base-files/files/etc/hotplug.d/iface/31-mptcp-modemmanager-endpoint-sync"
 require_file "$KERNEL_PATCH"
 require_file "$BBR_PATCH"
 require_file "$DTS_SOURCE"
 require_file "$MM_MHI_PATCH"
 require_file "$MM_QDU_PATCH"
 require_file "$OWNER_GUARD"
+require_file "$FW4_COMPAT"
+require_file "$MPTCP_SYNC"
 [[ -x "$OWNER_GUARD" ]] || fail 'cellular ownership guard is not executable'
+[[ -x "$FW4_COMPAT" ]] || fail 'fw4 video-chat compatibility script is not executable'
+[[ -x "$MPTCP_SYNC" ]] || fail 'MPTCP endpoint synchronization hook is not executable'
 cmp -s "$KERNEL_PATCH" "$KIT_DIR/patches/kernel/499-bus-mhi-host-pci-generic-gl-x3000-rm520n-mbim.patch" \
     || fail 'kernel patch differs from the audited build-kit copy'
 cmp -s "$DTS_SOURCE" "$KIT_DIR/overlays/openmptcprouter/6.18/target/linux/mediatek/dts/mt7981a-glinet-gl-x3000.dts" \
@@ -84,6 +90,10 @@ cmp -s "$MM_QDU_PATCH" "$KIT_DIR/patches/modemmanager/011-quectel-disable-at-ove
     || fail 'ModemManager WWAN QDU patch differs from the audited build-kit copy'
 cmp -s "$OWNER_GUARD" "$KIT_DIR/overlays/openmptcprouter/common/package/base-files/files/etc/uci-defaults/99-cellular-control-owner" \
     || fail 'cellular ownership guard differs from the audited build-kit copy'
+cmp -s "$FW4_COMPAT" "$KIT_DIR/overlays/openmptcprouter/common/package/base-files/files/etc/uci-defaults/99-fw4-videochat-compat" \
+    || fail 'fw4 video-chat compatibility script differs from the audited build-kit copy'
+cmp -s "$MPTCP_SYNC" "$KIT_DIR/overlays/openmptcprouter/common/package/base-files/files/etc/hotplug.d/iface/31-mptcp-modemmanager-endpoint-sync" \
+    || fail 'MPTCP endpoint synchronization hook differs from the audited build-kit copy'
 grep -Fqx 'LINUX_VERSION-6.18 = .34' "$SOURCE_ROOT/target/linux/generic/kernel-6.18" \
     || fail 'unexpected Linux 6.18 point release'
 grep -Fqx 'PKG_RELEASE:=6' "$OMR_FEED_DIR/modemmanager/Makefile" \
@@ -150,9 +160,15 @@ tar -xOf "${images[0]}" sysupgrade-glinet_gl-x3000/root > "$root_audit/root.squa
 readonly distfeeds="$root_audit/rootfs/etc/apk/repositories.d/distfeeds.list"
 readonly customfeeds="$root_audit/rootfs/etc/apk/repositories.d/customfeeds.list"
 readonly installed_guard="$root_audit/rootfs/etc/uci-defaults/99-cellular-control-owner"
+readonly installed_fw4_compat="$root_audit/rootfs/etc/uci-defaults/99-fw4-videochat-compat"
+readonly installed_mptcp_sync="$root_audit/rootfs/etc/hotplug.d/iface/31-mptcp-modemmanager-endpoint-sync"
 require_file "$distfeeds"
 require_file "$customfeeds"
 require_file "$installed_guard"
+require_file "$installed_fw4_compat"
+require_file "$installed_mptcp_sync"
+[[ -x "$installed_fw4_compat" ]] || fail 'installed fw4 video-chat compatibility script is not executable'
+[[ -x "$installed_mptcp_sync" ]] || fail 'installed MPTCP endpoint synchronization hook is not executable'
 grep -Fqx "https://download.openmptcprouter.com/release/${OMR_RELEASE}-${OMR_KERNEL}/${OMR_TARGET}/targets/mediatek/filogic/packages/packages.adb" "$distfeeds" \
     || fail 'target package feed is not the public version-matched HTTPS endpoint'
 for repository in luci packages base routing telephony; do
@@ -164,6 +180,16 @@ if grep -Eq '^http://' "$distfeeds" "$customfeeds"; then
 fi
 grep -Fq "proto='mbim'" "$installed_guard" || fail 'ownership guard lacks native-MBIM detection'
 grep -Fq 'modemmanager disable' "$installed_guard" || fail 'ownership guard does not disable ModemManager'
+grep -Fq "match='dest_net dest_port'" "$installed_fw4_compat" \
+    || fail 'installed fw4 compatibility script lacks address-and-port tuple matching'
+grep -Fq 'omr_dst_videochatv4_port' "$installed_fw4_compat" \
+    || fail 'installed fw4 compatibility script lacks the IPv4 tuple-set migration'
+grep -Fq 'omr_dst_videochatv6_port' "$installed_fw4_compat" \
+    || fail 'installed fw4 compatibility script lacks the IPv6 tuple-set migration'
+grep -Fq 'config_interface="${INTERFACE%_4}"' "$installed_mptcp_sync" \
+    || fail 'installed MPTCP hook does not normalize dynamic IPv4 interface names'
+grep -Fq 'mptcp-endpoint-sync' "$installed_mptcp_sync" \
+    || fail 'installed MPTCP hook lacks its audit log marker'
 
 printf 'OMR=%s\n' "$OMR_COMMIT"
 printf 'OMR_FEED=%s\n' "$OMR_FEED_COMMIT"

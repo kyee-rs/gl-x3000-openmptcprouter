@@ -1,0 +1,22 @@
+#!/bin/sh
+
+fix_videochat_set() {
+	local section="$1"
+	local rule="$2"
+	local name="$3"
+
+	[ "$(uci -q get firewall."$section")" = "ipset" ] || return 0
+
+	uci -q delete firewall."$section".storage
+	uci set firewall."$section".match='dest_net dest_port'
+	uci set firewall."$section".name="$name"
+
+	[ "$(uci -q get firewall."$rule")" = "rule" ] && \
+		uci set firewall."$rule".ipset="$name"
+}
+
+fix_videochat_set omr_dst_videochat_v4 omr_dst_videochatrule_v4 omr_dst_videochatv4_port
+fix_videochat_set omr_dst_videochat_v6 omr_dst_videochatrule_v6 omr_dst_videochatv6_port
+uci commit firewall
+
+exit 0

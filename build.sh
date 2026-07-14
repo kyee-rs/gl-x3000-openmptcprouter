@@ -121,6 +121,14 @@ install_file \
     "$KIT_DIR/overlays/openmptcprouter/common/package/base-files/files/etc/uci-defaults/99-cellular-control-owner" \
     "$OMR_DIR/common/package/base-files/files/etc/uci-defaults/99-cellular-control-owner"
 chmod 0755 "$OMR_DIR/common/package/base-files/files/etc/uci-defaults/99-cellular-control-owner"
+install_file \
+    "$KIT_DIR/overlays/openmptcprouter/common/package/base-files/files/etc/uci-defaults/99-fw4-videochat-compat" \
+    "$OMR_DIR/common/package/base-files/files/etc/uci-defaults/99-fw4-videochat-compat"
+chmod 0755 "$OMR_DIR/common/package/base-files/files/etc/uci-defaults/99-fw4-videochat-compat"
+install_file \
+    "$KIT_DIR/overlays/openmptcprouter/common/package/base-files/files/etc/hotplug.d/iface/31-mptcp-modemmanager-endpoint-sync" \
+    "$OMR_DIR/common/package/base-files/files/etc/hotplug.d/iface/31-mptcp-modemmanager-endpoint-sync"
+chmod 0755 "$OMR_DIR/common/package/base-files/files/etc/hotplug.d/iface/31-mptcp-modemmanager-endpoint-sync"
 
 if [[ "${PREPARE_ONLY:-0}" == 1 ]]; then
     printf 'Sources and audited overlays prepared under %s\n' "$WORK_DIR"

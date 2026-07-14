@@ -1,0 +1,48 @@
+#!/bin/sh
+
+# Keep kernel MPTCP endpoints synchronized when ModemManager renews an
+# address. Dynamic netifd interfaces such as wan2_4 do not have their own UCI
+# multipath setting, so resolve them back to the configured parent first.
+
+case "$ACTION" in
+	ifup|ifupdate|iflink|link-up) ;;
+	*) exit 0 ;;
+esac
+
+config_interface="${INTERFACE%_4}"
+config_interface="${config_interface%_6}"
+
+[ "$(uci -q get network."$config_interface".proto)" = "modemmanager" ] || exit 0
+
+mode="$(uci -q get network."$config_interface".multipath)"
+[ -n "$mode" ] && [ "$mode" != "off" ] || exit 0
+
+device="$DEVICE"
+[ -n "$device" ] || device="$(ifstatus "$config_interface" 2>/dev/null | jsonfilter -q -e '@.l3_device')"
+[ -n "$device" ] && [ -e "/sys/class/net/$device" ] || exit 0
+
+current="$(ip -4 -j addr show dev "$device" scope global 2>/dev/null | jsonfilter -q -e '@[0].addr_info[0].local')"
+[ -n "$current" ] || exit 0
+
+endpoint="$(ip mptcp endpoint show 2>/dev/null | awk -v dev="$device" '$0 ~ ("dev " dev " ") && $1 ~ /^[0-9]+\./ { print $1 }')"
+[ "$endpoint" = "$current" ] && exit 0
+
+lockdir="/tmp/mptcp-endpoint-sync-$device.lock"
+mkdir "$lockdir" 2>/dev/null || exit 0
+trap 'rmdir "$lockdir" 2>/dev/null' EXIT INT TERM
+
+endpoint="$(ip mptcp endpoint show 2>/dev/null | awk -v dev="$device" '$0 ~ ("dev " dev " ") && $1 ~ /^[0-9]+\./ { print $1 }')"
+[ "$endpoint" = "$current" ] && exit 0
+
+case "$mode" in
+	backup) endpoint_mode="backup" ;;
+	handover) endpoint_mode="handover" ;;
+	*) endpoint_mode="on" ;;
+esac
+
+if /usr/bin/multipath "$device" "$endpoint_mode" >/dev/null 2>&1; then
+	logger -t mptcp-endpoint-sync "Updated $device MPTCP endpoint after $config_interface address change"
+else
+	logger -t mptcp-endpoint-sync "Failed to update $device MPTCP endpoint after $config_interface address change"
+	exit 1
+fi

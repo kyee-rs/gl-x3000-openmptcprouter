@@ -42,6 +42,8 @@ validate: image
 lint:
 	bash -n build.sh validate.sh scripts/public-release-preflight.sh
 	sh -n overlays/openmptcprouter/common/package/base-files/files/etc/uci-defaults/99-cellular-control-owner
+	sh -n overlays/openmptcprouter/common/package/base-files/files/etc/uci-defaults/99-fw4-videochat-compat
+	sh -n overlays/openmptcprouter/common/package/base-files/files/etc/hotplug.d/iface/31-mptcp-modemmanager-endpoint-sync
 	git apply --numstat < patches/kernel/499-bus-mhi-host-pci-generic-gl-x3000-rm520n-mbim.patch
 	git apply --numstat < patches/modemmanager/010-broadband-modem-mbim-handle-mhi-pci-generic.patch
 	git apply --numstat < patches/modemmanager/011-quectel-disable-at-over-mbim-on-wwan.patch

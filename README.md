@@ -21,7 +21,7 @@ A separate development profile proved that the built-in modem can carry
 bidirectional PCIe/MBIM traffic. That experimental channel table is documented
 for research context but intentionally excluded from this build kit.
 
-The build carries seven narrowly scoped integration fixes:
+The build carries nine narrowly scoped integration fixes:
 
 1. Match PCI ID `17cb:0308`, subsystem `17cb:5201`, to the existing upstream
    `mhi_quectel_rm5xx_info` profile. This exposes `MBIM` control and
@@ -41,6 +41,10 @@ The build carries seven narrowly scoped integration fixes:
 7. Include a first-boot ownership guard: if any preserved interface uses native
    MBIM, it disables ModemManager before the daemon can compete for a control
    port. Otherwise an explicit ModemManager interface does not disable it.
+8. Keep ModemManager-backed MPTCP endpoints synchronized after cellular address
+   renewals, including netifd dynamic interfaces such as `wan2_4`.
+9. Migrate OMR's video-chat firewall sets to fw4 address-and-port tuples and
+   update their DSCP rules to reference the resulting nft sets.
 
 No experimental hybrid channel table or `no_m3` profile is included.
 
