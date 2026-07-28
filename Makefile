@@ -51,6 +51,7 @@ lint:
 	git apply --numstat < patches/openmptcprouter/0002-build-use-versioned-https-apk-feeds.patch
 	git apply --numstat < patches/openmptcprouter/0003-linux-6.18-fix-bbr-div-u64.patch
 	git apply --numstat < patches/openmptcprouter-feed/0001-modemmanager-bump-release.patch
+	git apply --numstat < patches/openmptcprouter-feed/0002-mqvpn-path-reconciliation.patch
 
 preflight: lint
 	scripts/public-release-preflight.sh

@@ -101,6 +101,9 @@ apply_patch_exact \
 apply_patch_exact \
     "$OMR_FEED_DIR" \
     "$KIT_DIR/patches/openmptcprouter-feed/0001-modemmanager-bump-release.patch"
+apply_patch_exact \
+    "$OMR_FEED_DIR" \
+    "$KIT_DIR/patches/openmptcprouter-feed/0002-mqvpn-path-reconciliation.patch"
 
 install_file \
     "$KIT_DIR/config/config-gl-x3000" \

@@ -69,6 +69,12 @@ readonly MM_QDU_PATCH="$OMR_FEED_DIR/modemmanager/patches/011-quectel-disable-at
 readonly OWNER_GUARD="$OMR_DIR/common/package/base-files/files/etc/uci-defaults/99-cellular-control-owner"
 readonly FW4_COMPAT="$OMR_DIR/common/package/base-files/files/etc/uci-defaults/99-fw4-videochat-compat"
 readonly MPTCP_SYNC="$OMR_DIR/common/package/base-files/files/etc/hotplug.d/iface/31-mptcp-modemmanager-endpoint-sync"
+readonly MQVPN_MAKEFILE="$OMR_FEED_DIR/mqvpn/Makefile"
+readonly MQVPN_INIT="$OMR_FEED_DIR/mqvpn/files/etc/init.d/mqvpn"
+readonly MQVPN_DEFAULTS="$OMR_FEED_DIR/mqvpn/files/etc/uci-defaults/4102-mqvpn"
+readonly MQVPN_HELPER="$OMR_FEED_DIR/mqvpn/files/usr/bin/mqvpn-path"
+readonly TRACKER_UP="$OMR_FEED_DIR/omr-tracker/files/usr/share/omr/post-tracking.d/003-up"
+readonly MQVPN_PATH_HOOK="$OMR_FEED_DIR/omr-tracker/files/usr/share/omr/post-tracking.d/005-mqvpn-path"
 require_file "$KERNEL_PATCH"
 require_file "$BBR_PATCH"
 require_file "$DTS_SOURCE"
@@ -77,9 +83,17 @@ require_file "$MM_QDU_PATCH"
 require_file "$OWNER_GUARD"
 require_file "$FW4_COMPAT"
 require_file "$MPTCP_SYNC"
+require_file "$MQVPN_MAKEFILE"
+require_file "$MQVPN_INIT"
+require_file "$MQVPN_DEFAULTS"
+require_file "$MQVPN_HELPER"
+require_file "$TRACKER_UP"
+require_file "$MQVPN_PATH_HOOK"
 [[ -x "$OWNER_GUARD" ]] || fail 'cellular ownership guard is not executable'
 [[ -x "$FW4_COMPAT" ]] || fail 'fw4 video-chat compatibility script is not executable'
 [[ -x "$MPTCP_SYNC" ]] || fail 'MPTCP endpoint synchronization hook is not executable'
+sh -n "$MQVPN_INIT" "$MQVPN_DEFAULTS" "$MQVPN_HELPER" "$TRACKER_UP" "$MQVPN_PATH_HOOK" \
+    || fail 'MQVPN/tracker runtime scripts fail shell syntax validation'
 cmp -s "$KERNEL_PATCH" "$KIT_DIR/patches/kernel/499-bus-mhi-host-pci-generic-gl-x3000-rm520n-mbim.patch" \
     || fail 'kernel patch differs from the audited build-kit copy'
 cmp -s "$DTS_SOURCE" "$KIT_DIR/overlays/openmptcprouter/6.18/target/linux/mediatek/dts/mt7981a-glinet-gl-x3000.dts" \
@@ -108,6 +122,15 @@ grep -Fq 'bootargs-append = " pcie_port_pm=off";' "$DTS_SOURCE" || fail 'DTS lac
 grep -Fq "$MODEMMANAGER_BACKPORT" "$MM_MHI_PATCH" || fail 'ModemManager backport provenance is missing'
 grep -Fq 'AT over MBIM disabled on WWAN port' "$MM_QDU_PATCH" \
     || fail 'ModemManager WWAN QDU guard marker is missing'
+grep -Fq '$(INSTALL_BIN) ./files/usr/bin/mqvpn-path $(1)/usr/bin/mqvpn-path' "$MQVPN_MAKEFILE" \
+    || fail 'mqvpn-path is not installed as an executable'
+grep -Fq "uci -q set mqvpn.control.control_port='9091'" "$MQVPN_DEFAULTS" \
+    || fail 'MQVPN localhost control API is not enabled by default'
+grep -Fq 'if [ -z "$lock_pid" ] || ! kill -0 "$lock_pid" 2>/dev/null; then' "$TRACKER_UP" \
+    || fail 'tracker does not recover PID-less stale locks'
+if grep -Fq 'Only act on status transitions to avoid spamming the API on every poll' "$MQVPN_PATH_HOOK"; then
+    fail 'MQVPN path hook still skips healthy-state reconciliation'
+fi
 grep -Fq 'https://packages.openmptcprouter.com/${OMR_RELEASE}-${OMR_KERNEL}/${OMR_REAL_TARGET}/luci/packages.adb' "$OMR_DIR/build.sh" \
     || fail 'OMR build script lacks versioned HTTPS APK feeds'
 
@@ -162,13 +185,22 @@ readonly customfeeds="$root_audit/rootfs/etc/apk/repositories.d/customfeeds.list
 readonly installed_guard="$root_audit/rootfs/etc/uci-defaults/99-cellular-control-owner"
 readonly installed_fw4_compat="$root_audit/rootfs/etc/uci-defaults/99-fw4-videochat-compat"
 readonly installed_mptcp_sync="$root_audit/rootfs/etc/hotplug.d/iface/31-mptcp-modemmanager-endpoint-sync"
+readonly installed_mqvpn_defaults="$root_audit/rootfs/etc/uci-defaults/4102-mqvpn"
+readonly installed_mqvpn_helper="$root_audit/rootfs/usr/bin/mqvpn-path"
+readonly installed_tracker_up="$root_audit/rootfs/usr/share/omr/post-tracking.d/003-up"
+readonly installed_mqvpn_path_hook="$root_audit/rootfs/usr/share/omr/post-tracking.d/005-mqvpn-path"
 require_file "$distfeeds"
 require_file "$customfeeds"
 require_file "$installed_guard"
 require_file "$installed_fw4_compat"
 require_file "$installed_mptcp_sync"
+require_file "$installed_mqvpn_defaults"
+require_file "$installed_mqvpn_helper"
+require_file "$installed_tracker_up"
+require_file "$installed_mqvpn_path_hook"
 [[ -x "$installed_fw4_compat" ]] || fail 'installed fw4 video-chat compatibility script is not executable'
 [[ -x "$installed_mptcp_sync" ]] || fail 'installed MPTCP endpoint synchronization hook is not executable'
+[[ -x "$installed_mqvpn_helper" ]] || fail 'installed mqvpn-path helper is not executable'
 grep -Fqx "https://download.openmptcprouter.com/release/${OMR_RELEASE}-${OMR_KERNEL}/${OMR_TARGET}/targets/mediatek/filogic/packages/packages.adb" "$distfeeds" \
     || fail 'target package feed is not the public version-matched HTTPS endpoint'
 for repository in luci packages base routing telephony; do
@@ -190,6 +222,13 @@ grep -Fq 'config_interface="${INTERFACE%_4}"' "$installed_mptcp_sync" \
     || fail 'installed MPTCP hook does not normalize dynamic IPv4 interface names'
 grep -Fq 'mptcp-endpoint-sync' "$installed_mptcp_sync" \
     || fail 'installed MPTCP hook lacks its audit log marker'
+grep -Fq "uci -q set mqvpn.control.control_port='9091'" "$installed_mqvpn_defaults" \
+    || fail 'installed MQVPN defaults lack the control API port'
+grep -Fq 'if [ -z "$lock_pid" ] || ! kill -0 "$lock_pid" 2>/dev/null; then' "$installed_tracker_up" \
+    || fail 'installed tracker does not recover PID-less stale locks'
+if grep -Fq 'Only act on status transitions to avoid spamming the API on every poll' "$installed_mqvpn_path_hook"; then
+    fail 'installed MQVPN path hook still skips healthy-state reconciliation'
+fi
 
 printf 'OMR=%s\n' "$OMR_COMMIT"
 printf 'OMR_FEED=%s\n' "$OMR_FEED_COMMIT"

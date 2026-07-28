@@ -21,7 +21,7 @@ A separate development profile proved that the built-in modem can carry
 bidirectional PCIe/MBIM traffic. That experimental channel table is documented
 for research context but intentionally excluded from this build kit.
 
-The build carries nine narrowly scoped integration fixes:
+The build carries twelve narrowly scoped integration fixes:
 
 1. Match PCI ID `17cb:0308`, subsystem `17cb:5201`, to the existing upstream
    `mhi_quectel_rm5xx_info` profile. This exposes `MBIM` control and
@@ -45,6 +45,12 @@ The build carries nine narrowly scoped integration fixes:
    renewals, including netifd dynamic interfaces such as `wan2_4`.
 9. Migrate OMR's video-chat firewall sets to fw4 address-and-port tuples and
    update their DSCP rules to reference the resulting nft sets.
+10. Install `mqvpn-path` as an executable and enable MQVPN's localhost control
+    port by default so tracker hooks can reconcile runtime paths.
+11. Recheck MQVPN path membership on healthy tracker polls, allowing a WAN that
+    came up after MQVPN startup to join without waiting for another transition.
+12. Recover PID-less `003-up` lock directories as stale instead of suppressing
+    all future WAN-up processing.
 
 No experimental hybrid channel table or `no_m3` profile is included.
 

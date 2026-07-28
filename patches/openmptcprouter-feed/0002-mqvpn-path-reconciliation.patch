@@ -1,0 +1,53 @@
+diff --git a/mqvpn/Makefile b/mqvpn/Makefile
+index b81d4af..ccf5916 100644
+--- a/mqvpn/Makefile
++++ b/mqvpn/Makefile
+@@ -145,6 +145,7 @@ define Package/mqvpn/install
+ 	$(INSTALL_DIR) $(1)/usr/sbin
+ 	$(INSTALL_BIN) $(MQVPN_BUILD)/mqvpn $(1)/usr/sbin/mqvpn
+ 	$(CP) ./files/* $(1)/
++	$(INSTALL_BIN) ./files/usr/bin/mqvpn-path $(1)/usr/bin/mqvpn-path
+ endef
+ 
+ $(eval $(call BuildPackage,mqvpn))
+diff --git a/mqvpn/files/etc/uci-defaults/4102-mqvpn b/mqvpn/files/etc/uci-defaults/4102-mqvpn
+index cd233ce..2516119 100644
+--- a/mqvpn/files/etc/uci-defaults/4102-mqvpn
++++ b/mqvpn/files/etc/uci-defaults/4102-mqvpn
+@@ -7,4 +7,9 @@ if [ "$(uci -q get mqvpn.interface.tun_name)" = "" ]; then
+ 	EOF
+ fi
+ 
++if [ "$(uci -q get mqvpn.control.control_port)" = "" ]; then
++	uci -q set mqvpn.control.control_port='9091'
++	uci -q commit mqvpn
++fi
++
+ exit 0
+diff --git a/omr-tracker/files/usr/share/omr/post-tracking.d/003-up b/omr-tracker/files/usr/share/omr/post-tracking.d/003-up
+index 21a1395..ef51057 100755
+--- a/omr-tracker/files/usr/share/omr/post-tracking.d/003-up
++++ b/omr-tracker/files/usr/share/omr/post-tracking.d/003-up
+@@ -31,7 +31,7 @@ if mkdir "$lock_dir" 2>/dev/null; then
+ else
+ 	lock_pid=""
+ 	[ -f "$lock_dir/pid" ] && lock_pid="$(cat "$lock_dir/pid" 2>/dev/null)"
+-	if [ -n "$lock_pid" ] && ! kill -0 "$lock_pid" 2>/dev/null; then
++	if [ -z "$lock_pid" ] || ! kill -0 "$lock_pid" 2>/dev/null; then
+ 		rm -rf "$lock_dir" >/dev/null 2>&1
+ 		if mkdir "$lock_dir" 2>/dev/null; then
+ 			printf '%s\n' "$$" >"$lock_dir/pid"
+diff --git a/omr-tracker/files/usr/share/omr/post-tracking.d/005-mqvpn-path b/omr-tracker/files/usr/share/omr/post-tracking.d/005-mqvpn-path
+index 9c50774..2e34d7a 100755
+--- a/omr-tracker/files/usr/share/omr/post-tracking.d/005-mqvpn-path
++++ b/omr-tracker/files/usr/share/omr/post-tracking.d/005-mqvpn-path
+@@ -41,9 +41,6 @@ if [ "$OMR_TRACKER_STATUS" = "ERROR" ]; then
+ 	exit 0
+ fi
+ 
+-# Only act on status transitions to avoid spamming the API on every poll
+-[ "$OMR_TRACKER_PREV_STATUS" = "$OMR_TRACKER_STATUS" ] && exit 0
+-
+ multipath_config=$(uci -q get "openmptcprouter.$OMR_TRACKER_INTERFACE.multipath")
+ [ -z "$multipath_config" ] && multipath_config=$(uci -q get "network.$OMR_TRACKER_INTERFACE.multipath" || echo "off")
+ 
