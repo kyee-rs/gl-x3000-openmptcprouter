@@ -108,3 +108,16 @@ The pinned MQVPN path-state refactor does not reliably preserve `BackupPath`
 standby semantics, so do not use backup mode as a substitute for explicit
 ordering on this snapshot. A controlled removal of `wwan0` should complete
 without packet loss before the setup is considered commissioned.
+
+## OMR Tracker and live MQVPN restarts
+
+The snapshot's tunnel-down hook restarts MQVPN whenever an `omrvpn` probe
+transitions to error, even when the MQVPN process is still established. A
+captured event showed the router cleanly closing the tunnel and reconnecting
+about four seconds later while both physical WAN interfaces stayed up. The VPS
+service did not restart.
+
+MQVPN already reconnects its paths internally, and OpenWrt's service supervisor
+plus `omr-schedule` recover a missing process. The custom feed therefore guards
+the tracker restart with `pgrep mqvpn`: tracker recovery restarts a missing
+process but does not turn a transient probe failure into a full tunnel outage.

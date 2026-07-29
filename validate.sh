@@ -30,6 +30,8 @@ require_tracker_restart_policy() {
         }
         END { exit found ? 0 : 1 }
     ' "$1" || fail "tracker still bypasses restart_down policy: $1"
+    grep -Fq 'if [ "$(uci -q get mqvpn.settings.enable)" = "1" ] && [ "$(pgrep mqvpn)" = "" ]; then' "$1" \
+        || fail "tracker still restarts a running MQVPN process: $1"
 }
 
 require_string() {

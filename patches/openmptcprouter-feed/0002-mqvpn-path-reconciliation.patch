@@ -25,7 +25,7 @@ index cd233ce..2516119 100644
 +
  exit 0
 diff --git a/omr-tracker/files/usr/share/omr/post-tracking.d/002-error b/omr-tracker/files/usr/share/omr/post-tracking.d/002-error
-index e2d9e9da..f2120313 100755
+index e2d9e9da..e801176a 100755
 --- a/omr-tracker/files/usr/share/omr/post-tracking.d/002-error
 +++ b/omr-tracker/files/usr/share/omr/post-tracking.d/002-error
 @@ -57,15 +57,7 @@ if [ "$OMR_TRACKER_STATUS" = "ERROR" ] || { [ "$OMR_TRACKER_INTERFACE" != "omrvp
@@ -45,6 +45,24 @@ index e2d9e9da..f2120313 100755
  			elif [ "$mm_state" = "disabled" ] && [ "$(uci -q get network.$OMR_TRACKER_INTERFACE.force_link)" = "1" ]; then
  			# [ -n "$(echo $modeminfo | grep 'modem.3gpp.registration-state ' | grep home)" ]; then
  				_log "Interface $OMR_TRACKER_INTERFACE ($OMR_TRACKER_DEVICE) disabled, set it up"
+@@ -274,8 +266,8 @@ if [ "$OMR_TRACKER_STATUS" = "ERROR" ] || { [ "$OMR_TRACKER_INTERFACE" != "omrvp
+ 			_log "DSVPN down, restart it"
+ 			/etc/init.d/dsvpn restart >/dev/null 2>&1
+ 		fi
+-		if [ "$(uci -q get mqvpn.settings.enable)" = "1" ]; then
+-			_log "mqvn down, restart it"
++		if [ "$(uci -q get mqvpn.settings.enable)" = "1" ] && [ "$(pgrep mqvpn)" = "" ]; then
++			_log "MQVPN process missing, restart it"
+ 			/etc/init.d/mqvpn restart >/dev/null 2>&1
+ 		fi
+ 		if [ "$(uci -q get mlvpn.general.enable)" = "1" ]; then
+@@ -335,4 +327,4 @@ if [ "$OMR_TRACKER_STATUS" = "ERROR" ] || { [ "$OMR_TRACKER_INTERFACE" != "omrvp
+ 	exit 0
+ fi
+ 
+-exit 0
+\ No newline at end of file
++exit 0
 diff --git a/omr-tracker/files/usr/share/omr/post-tracking.d/003-up b/omr-tracker/files/usr/share/omr/post-tracking.d/003-up
 index 21a1395..ef51057 100755
 --- a/omr-tracker/files/usr/share/omr/post-tracking.d/003-up
