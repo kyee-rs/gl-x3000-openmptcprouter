@@ -22,6 +22,16 @@ require_config() {
     grep -Fqx -- "$1" "$SOURCE_ROOT/.config" || fail "missing config: $1"
 }
 
+require_tracker_restart_policy() {
+    awk '
+        index($0, "elif [ \"$mm_state\" = \"enabled\" ] || [ \"$mm_state\" = \"connected\" ]; then") {
+            getline
+            if ($0 ~ /^[[:space:]]*:[[:space:]]*$/) found = 1
+        }
+        END { exit found ? 0 : 1 }
+    ' "$1" || fail "tracker still bypasses restart_down policy: $1"
+}
+
 require_string() {
     local file="$1"
     local expected="$2"
@@ -73,6 +83,7 @@ readonly MQVPN_MAKEFILE="$OMR_FEED_DIR/mqvpn/Makefile"
 readonly MQVPN_INIT="$OMR_FEED_DIR/mqvpn/files/etc/init.d/mqvpn"
 readonly MQVPN_DEFAULTS="$OMR_FEED_DIR/mqvpn/files/etc/uci-defaults/4102-mqvpn"
 readonly MQVPN_HELPER="$OMR_FEED_DIR/mqvpn/files/usr/bin/mqvpn-path"
+readonly TRACKER_ERROR="$OMR_FEED_DIR/omr-tracker/files/usr/share/omr/post-tracking.d/002-error"
 readonly TRACKER_UP="$OMR_FEED_DIR/omr-tracker/files/usr/share/omr/post-tracking.d/003-up"
 readonly MQVPN_PATH_HOOK="$OMR_FEED_DIR/omr-tracker/files/usr/share/omr/post-tracking.d/005-mqvpn-path"
 require_file "$KERNEL_PATCH"
@@ -87,12 +98,14 @@ require_file "$MQVPN_MAKEFILE"
 require_file "$MQVPN_INIT"
 require_file "$MQVPN_DEFAULTS"
 require_file "$MQVPN_HELPER"
+require_file "$TRACKER_ERROR"
 require_file "$TRACKER_UP"
 require_file "$MQVPN_PATH_HOOK"
 [[ -x "$OWNER_GUARD" ]] || fail 'cellular ownership guard is not executable'
 [[ -x "$FW4_COMPAT" ]] || fail 'fw4 video-chat compatibility script is not executable'
 [[ -x "$MPTCP_SYNC" ]] || fail 'MPTCP endpoint synchronization hook is not executable'
-sh -n "$MQVPN_INIT" "$MQVPN_DEFAULTS" "$MQVPN_HELPER" "$TRACKER_UP" "$MQVPN_PATH_HOOK" \
+sh -n "$MQVPN_INIT" "$MQVPN_DEFAULTS" "$MQVPN_HELPER" "$TRACKER_ERROR" "$TRACKER_UP" \
+    "$MQVPN_PATH_HOOK" \
     || fail 'MQVPN/tracker runtime scripts fail shell syntax validation'
 cmp -s "$KERNEL_PATCH" "$KIT_DIR/patches/kernel/499-bus-mhi-host-pci-generic-gl-x3000-rm520n-mbim.patch" \
     || fail 'kernel patch differs from the audited build-kit copy'
@@ -126,6 +139,7 @@ grep -Fq '$(INSTALL_BIN) ./files/usr/bin/mqvpn-path $(1)/usr/bin/mqvpn-path' "$M
     || fail 'mqvpn-path is not installed as an executable'
 grep -Fq "uci -q set mqvpn.control.control_port='9091'" "$MQVPN_DEFAULTS" \
     || fail 'MQVPN localhost control API is not enabled by default'
+require_tracker_restart_policy "$TRACKER_ERROR"
 grep -Fq 'if [ -z "$lock_pid" ] || ! kill -0 "$lock_pid" 2>/dev/null; then' "$TRACKER_UP" \
     || fail 'tracker does not recover PID-less stale locks'
 if grep -Fq 'Only act on status transitions to avoid spamming the API on every poll' "$MQVPN_PATH_HOOK"; then
@@ -187,6 +201,7 @@ readonly installed_fw4_compat="$root_audit/rootfs/etc/uci-defaults/99-fw4-videoc
 readonly installed_mptcp_sync="$root_audit/rootfs/etc/hotplug.d/iface/31-mptcp-modemmanager-endpoint-sync"
 readonly installed_mqvpn_defaults="$root_audit/rootfs/etc/uci-defaults/4102-mqvpn"
 readonly installed_mqvpn_helper="$root_audit/rootfs/usr/bin/mqvpn-path"
+readonly installed_tracker_error="$root_audit/rootfs/usr/share/omr/post-tracking.d/002-error"
 readonly installed_tracker_up="$root_audit/rootfs/usr/share/omr/post-tracking.d/003-up"
 readonly installed_mqvpn_path_hook="$root_audit/rootfs/usr/share/omr/post-tracking.d/005-mqvpn-path"
 require_file "$distfeeds"
@@ -196,6 +211,7 @@ require_file "$installed_fw4_compat"
 require_file "$installed_mptcp_sync"
 require_file "$installed_mqvpn_defaults"
 require_file "$installed_mqvpn_helper"
+require_file "$installed_tracker_error"
 require_file "$installed_tracker_up"
 require_file "$installed_mqvpn_path_hook"
 [[ -x "$installed_fw4_compat" ]] || fail 'installed fw4 video-chat compatibility script is not executable'
@@ -224,6 +240,7 @@ grep -Fq 'mptcp-endpoint-sync' "$installed_mptcp_sync" \
     || fail 'installed MPTCP hook lacks its audit log marker'
 grep -Fq "uci -q set mqvpn.control.control_port='9091'" "$installed_mqvpn_defaults" \
     || fail 'installed MQVPN defaults lack the control API port'
+require_tracker_restart_policy "$installed_tracker_error"
 grep -Fq 'if [ -z "$lock_pid" ] || ! kill -0 "$lock_pid" 2>/dev/null; then' "$installed_tracker_up" \
     || fail 'installed tracker does not recover PID-less stale locks'
 if grep -Fq 'Only act on status transitions to avoid spamming the API on every poll' "$installed_mqvpn_path_hook"; then

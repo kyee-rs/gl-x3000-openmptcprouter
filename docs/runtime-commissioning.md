@@ -84,3 +84,27 @@ OMR Tracker remains necessary because it drives WAN, proxy, VPN, and routing
 state outside the VPN process itself. Very short tracker intervals create brief
 CPU bursts on the dual-core router. A modest interval increase can reduce that
 work, at the cost of proportionally slower failure detection.
+
+## MQVPN path ordering on the pinned snapshot
+
+MQVPN 0.7.0 treats the first generated `Path` as QUIC path 0. Removing that
+initial path forces a tunnel reconnect, while removing a later path can continue
+on the remaining path. Automatic WAN discovery also omits interfaces that OMR
+Tracker considers down at MQVPN startup, so a transient Starlink tracker state
+can accidentally make cellular path 0.
+
+For the tested GL-X3000 configuration, use explicit paths in stable order:
+
+```uci
+config multipath 'multipath'
+        option auto_wan '0'
+        option scheduler 'minrtt'
+        list path 'eth0'
+        list path 'wwan0'
+```
+
+This keeps Starlink as path 0 and makes cellular a removable secondary path.
+The pinned MQVPN path-state refactor does not reliably preserve `BackupPath`
+standby semantics, so do not use backup mode as a substitute for explicit
+ordering on this snapshot. A controlled removal of `wwan0` should complete
+without packet loss before the setup is considered commissioned.
