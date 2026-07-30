@@ -21,7 +21,7 @@ A separate development profile proved that the built-in modem can carry
 bidirectional PCIe/MBIM traffic. That experimental channel table is documented
 for research context but intentionally excluded from this build kit.
 
-The build carries fifteen narrowly scoped integration fixes:
+The build carries sixteen narrowly scoped integration fixes:
 
 1. Match PCI ID `17cb:0308`, subsystem `17cb:5201`, to the existing upstream
    `mhi_quectel_rm5xx_info` profile. This exposes `MBIM` control and
@@ -55,9 +55,11 @@ The build carries fifteen narrowly scoped integration fixes:
     disconnecting a connected ModemManager WAN after a transient probe failure.
 14. Leave a running MQVPN process to its own multipath reconnection logic;
     tracker recovery now restarts MQVPN only when the process is actually absent.
-15. Keep explicitly configured MQVPN paths under MQVPN ownership: a tracker
-    false positive can no longer administratively remove QUIC path 0 and close
-    the entire tunnel.
+15. Keep explicitly configured MQVPN paths under MQVPN ownership: tracker
+    verdicts cannot administratively delete them.
+16. Make MQVPN administrative path removal connection-preserving for every QUIC
+    path ID, including path 0. A failed PATH_ABANDON now leaves the platform
+    socket intact instead of closing the HTTP/3 connection.
 
 No experimental hybrid channel table or `no_m3` profile is included.
 
@@ -79,7 +81,7 @@ cleans the dedicated source clones before applying this kit, which prevents a
 stale experimental patch from leaking into a later image. Use a separate
 worktree for any source changes you want to keep.
 
-The firmware source revisions are pinned, but this is not yet a claim of
+The firmware, MQVPN, and xquic source revisions are pinned, but this is not yet a claim of
 byte-for-byte reproducibility: the Debian base tag, Debian package repository,
 and parts of the upstream build banner can change over time. Treat every output
 as a new candidate, record its checksum, and rerun the complete validation
@@ -138,7 +140,11 @@ All audited revisions are recorded in `manifest.lock`. The validation script
 checks the OpenMPTCProuter, feed, and OpenWrt revisions; compiled device-tree
 boot arguments; kernel module PCI alias and channel profile; absence of the
 experimental hybrid profile and installed `mhi_net`; the ModemManager
-backport; and the final sysupgrade archive.
+backport; the exact MQVPN patch inputs, release-bumped APK, and installed binary
+marker; and the final sysupgrade archive. The accompanying MQVPN namespace
+regression keeps sustained tunnel traffic in flight through two consecutive
+path removals, rejects removal of the final path, proves a transport refusal
+preserves the active socket, and can be run against every supported scheduler.
 
 ## License
 

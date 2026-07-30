@@ -1,0 +1,46 @@
+diff --git a/scripts/ci_e2e/run_path_api_test.sh b/scripts/ci_e2e/run_path_api_test.sh
+--- a/scripts/ci_e2e/run_path_api_test.sh
++++ b/scripts/ci_e2e/run_path_api_test.sh
+@@ -413,16 +413,39 @@
+ fi
+ echo "OK: list_paths shows only veth-c0"
+ 
++# Add an unusable sibling so platform_remove_path() sees two configured paths
++# while xquic still has only one active path.  The transport must refuse to
++# abandon that sole active path, and the Linux caller must preserve its socket.
++ip netns exec "$NS_CLIENT" ip link set "$VETH_B0" down
++if ! ctrl_ok '{"cmd":"add_path","iface":"veth-b0"}'; then
++    echo "FAIL: could not add non-validating sibling for refusal test"
++    dump_logs; exit 1
++fi
+ LAST_REMOVE_RESP=$(ctrl_send '{"cmd":"remove_path","iface":"veth-c0"}')
+ if echo "$LAST_REMOVE_RESP" | grep -q '"ok":true'; then
+-    echo "FAIL: removal of the final path was accepted"
++    echo "FAIL: transport accepted removal of its only active path"
+     dump_logs; exit 1
+ fi
++if ! wait_for_log "${WORK_DIR}/client.log" "refusing path removal: xqc_conn_close_path" 5; then
++    echo "FAIL: transport refusal was not recorded"
++    dump_logs; exit 1
++fi
+ if ! ip netns exec "$NS_CLIENT" ping -c 3 -W 1 "$TUNNEL_IP" >/dev/null 2>&1; then
+-    echo "FAIL: tunnel stopped after refused final-path removal"
++    echo "FAIL: tunnel stopped after transport-refused path removal"
+     dump_logs; exit 1
+ fi
+-echo "OK: final-path removal was refused and the tunnel remained healthy"
++echo "OK: transport refusal preserved the only active path and its socket"
++
++if ! ctrl_ok '{"cmd":"remove_path","iface":"veth-b0"}'; then
++    echo "FAIL: could not remove unusable sibling after refusal test"
++    dump_logs; exit 1
++fi
++LAST_REMOVE_RESP=$(ctrl_send '{"cmd":"remove_path","iface":"veth-c0"}')
++if echo "$LAST_REMOVE_RESP" | grep -q '"ok":true'; then
++    echo "FAIL: removal of the final configured path was accepted"
++    dump_logs; exit 1
++fi
++echo "OK: final configured-path removal was refused"
+ 
+ # ── Phase 4: test list_paths control API command ──────────────────────────
+ 

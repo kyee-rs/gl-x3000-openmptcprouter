@@ -17,6 +17,8 @@ The practical target for this build is:
 - either WAN may become a black hole without restarting MQVPN;
 - the surviving WAN keeps the same tunnel and client sessions alive;
 - an OMR Tracker false positive cannot remove an explicitly configured path;
+- an intentional administrative removal cannot close the connection while
+  another validated path remains;
 - a recovered WAN rejoins without restarting the tunnel; and
 - status automation never owns a lower-level path that MQVPN already monitors.
 
@@ -46,9 +48,8 @@ is therefore not, by itself, evidence that the cellular data link is down.
 ## Why the behavior is reproducible
 
 The pinned MQVPN source treats an administrative removal of QUIC path 0 as a
-connection-wide operation. Its client explicitly closes the HTTP/3 connection
-instead of waiting through a black-hole interval. The current upstream source
-retains that policy.
+connection-wide operation. Its client explicitly closes the HTTP/3 connection.
+The reviewed current upstream source retains that policy.
 
 Linux link and address events take a different path through MQVPN. Its platform
 monitor handles real netlink disappearance as a platform-owned path drop, so
@@ -64,7 +65,7 @@ Primary source:
 - [pinned MQVPN client path lifecycle](https://github.com/Ysurac/mqvpn/blob/3a07dc7e359629ed6fa246139a534924b6af7975/src/mqvpn_client.c)
 - [current MQVPN client path lifecycle](https://github.com/Ysurac/mqvpn/blob/93b0ed9324867473839c87d54afac92749ace73a/src/mqvpn_client.c)
 - [current OMR MQVPN tracker hook](https://github.com/ysurac/openmptcprouter-feeds/blob/d935eff2aacf7f2907ac3039abadf0b57688afc9/omr-tracker/files/usr/share/omr/post-tracking.d/005-mqvpn-path)
-- [IETF Multipath QUIC path-management draft](https://datatracker.ietf.org/doc/html/draft-ietf-quic-multipath-19)
+- [IETF Multipath QUIC path-management draft](https://datatracker.ietf.org/doc/html/draft-ietf-quic-multipath-21)
 
 ## Implemented ownership rule
 
@@ -76,11 +77,48 @@ revalidation for those paths.
 Dynamic discovery keeps the upstream behavior. Healthy polls also retain the
 existing reconciliation behavior so a missing live path can be added back.
 
-This is intentionally a one-condition integration fix. It does not change
-MQVPN, xquic, netifd, firewall routing, or the modem connection manager.
-
 The build validator executes the hook with stubbed commands and proves that an
 explicit-path `ERROR` does not invoke `mqvpn-path`.
+
+## Transport-level correction
+
+The tracker ownership rule prevents the captured false-positive path deletion,
+but it does not make the MQVPN control API safe for legitimate administrative
+changes. The transport correction therefore removes MQVPN's path-0 special
+case:
+
+1. Every live path is closed with xquic's `xqc_conn_close_path()`, which emits
+   PATH_ABANDON without closing the QUIC connection.
+2. If xquic refuses the operation, `mqvpn_client_remove_path()` returns an
+   error instead of falling back to `xqc_h3_conn_close()`.
+3. The Linux platform caller checks that result before deleting the libevent
+   watcher, compacting its path table, or closing the UDP socket.
+
+No xquic source change is required. The pinned xquic implementation already
+selects another active path for PATH_ABANDON and correctly refuses to abandon
+the only active path. The defect was MQVPN's connection-close fallback and the
+Linux caller's ignored return value.
+
+This matches the Multipath QUIC path model: path 0 is not permanently special
+after the handshake, and the draft explicitly permits abandoning it while
+another path carries the connection. Refusal is the safe failure mode when no
+validated sibling exists.
+
+The exact pinned MQVPN and xquic revisions were built in an isolated Linux
+network-namespace harness. Before the correction, the sustained-traffic test
+lost 58 of 78 tunnel probes after removing path 0. With the correction:
+
+- sustained traffic remained gap-free on the original HTTP/3 connection;
+- path 0 and then a secondary path were removed consecutively;
+- the second removal exercised the exact one-surviving-path topology;
+- an unusable configured sibling forced xquic's only-active-path refusal, and
+  the Linux caller preserved the active path and socket;
+- removal of the final path was refused without damaging the tunnel; and
+- all seven schedulers passed: MinRTT, WLB, WLB UDP pinning, WRTT, RAP,
+  backup, and backup+FEC.
+
+The tracker guard remains useful defense in depth and preserves clear ownership:
+status probes still should not mutate an explicitly configured MQVPN path list.
 
 ## WAN health policy
 
@@ -133,7 +171,7 @@ interfaces down, alter netifd state, or persist rules.
 | Cellular path black hole | 15 seconds | 299/300 | unchanged | unchanged |
 | Synthetic cellular tracker `ERROR` | immediate | no tunnel change | unchanged | unchanged |
 
-During both black-hole tests MQVPN degraded the failed path, kept the connection
+During both live black-hole tests MQVPN degraded the failed path, kept the connection
 established on the survivor, and revalidated the path after traffic was
 restored. There was no reconnect cycle or tunnel reset. The single lost
 datagram in the cellular test is below the level that resets a TCP session;
@@ -209,4 +247,5 @@ can time out even while ordinary routed HTTPS succeeds. Confirm that
 For explicit paths, an OMR Tracker error must never be followed by
 `mqvpn: remove path`. A real WAN failure should instead produce an MQVPN path
 transition from active to degraded or pending while the connection remains
-established.
+established. A deliberate control-API removal is separately required to keep
+the same HTTP/3 connection whenever a validated sibling remains.

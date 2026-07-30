@@ -2,6 +2,15 @@ diff --git a/mqvpn/Makefile b/mqvpn/Makefile
 index b81d4af..ccf5916 100644
 --- a/mqvpn/Makefile
 +++ b/mqvpn/Makefile
+@@ -9,7 +9,7 @@ include $(TOPDIR)/rules.mk
+ PKG_NAME:=mqvpn
+ PKG_VERSION:=0.7.0
+-PKG_RELEASE:=2
++PKG_RELEASE:=3
+ PKG_LICENSE:=Apache-2.0
+ PKG_LICENSE_FILES:=LICENSE
+
+ PKG_SOURCE_PROTO:=git
 @@ -145,6 +145,7 @@ define Package/mqvpn/install
  	$(INSTALL_DIR) $(1)/usr/sbin
  	$(INSTALL_BIN) $(MQVPN_BUILD)/mqvpn $(1)/usr/sbin/mqvpn
@@ -83,7 +92,7 @@ index d6148d00..6f77b442 100755
 @@ -29,2 +29,8 @@ mqvpn_path_exists() {
  }
 +
-+# Explicit paths are MQVPN-owned. Removing QUIC path 0 closes the whole tunnel.
++# Explicit paths are MQVPN-owned; tracker verdicts must not delete them.
 +if [ "$OMR_TRACKER_STATUS" = "ERROR" ] && [ "$(uci -q get mqvpn.multipath.auto_wan)" = "0" ]; then
 +	exit 0
 +fi

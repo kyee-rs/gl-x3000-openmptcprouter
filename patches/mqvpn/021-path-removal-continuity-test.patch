@@ -1,0 +1,247 @@
+diff --git a/scripts/ci_e2e/run_path_api_test.sh b/scripts/ci_e2e/run_path_api_test.sh
+index 405e6a5..8e628ed 100755
+--- a/scripts/ci_e2e/run_path_api_test.sh
++++ b/scripts/ci_e2e/run_path_api_test.sh
+@@ -4,9 +4,11 @@
+ # Verifies that runtime-added paths via the control-socket API:
+ #   1. Become ACTIVE (not stuck PENDING) — Bug 1 fix in client_activate_path()
+ #      plus issue #4273 coverage for multiple pending secondaries.
+-#   2. Keep the tunnel alive after the initial path is removed — Bug 2 fix
+-#      in tick_reconnect() which now rotates away from the dead path.
+-#   3. list_paths control API command returns correct data.
++#   2. Keep the same tunnel alive when initial and secondary paths are removed
++#      while another validated path remains.
++#   3. A second removal also preserves the connection when exactly one sibling
++#      remains, and removal of that final path is refused.
++#   4. list_paths control API command returns correct data.
+ #
+ # Topology (triple-path, single-server):
+ #   vpn-client                    vpn-server
+@@ -21,8 +23,9 @@
+ #   Phase 1  Client starts with path A only — single-path tunnel established.
+ #   Phase 2  Paths B and C added via control API.
+ #            Wait for library to activate both (verifies Bug 1 + #4273).
+-#   Phase 3  Path A removed via {"cmd":"remove_path","iface":"veth-a0"}.
+-#            Verify tunnel still works on secondary paths (verifies Bug 2 fix).
++#   Phase 3  Paths A then B removed through the control API while sustained
++#            tunnel traffic remains gap-free on the original H3 connection.
++#            Verify removal of final path C is refused.
+ #   Phase 4  Test list_paths control API command (client-side command).
+ #            Note: get_status is server-only (tested in unit tests)
+ #
+@@ -35,6 +38,7 @@ source "$(dirname "$0")/sanitizer_check.sh"
+ 
+ SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
+ MQVPN="${1:-${SCRIPT_DIR}/../../build/mqvpn}"
++SCHEDULER="${SCHEDULER:-wlb}"
+ 
+ if [ ! -f "$MQVPN" ]; then
+     echo "error: mqvpn binary not found at $MQVPN"
+@@ -61,6 +65,7 @@ CTRL_PORT="9181"   # control socket port for this test (avoid collisions)
+ 
+ SERVER_PID=""
+ CLIENT_PID=""
++CONTINUITY_PID=""
+ SANITIZER_FAIL=0
+ 
+ # ── Cleanup ──────────────────────────────────────────────────────────────────
+@@ -68,6 +73,10 @@ SANITIZER_FAIL=0
+ cleanup() {
+     echo ""
+     echo "Cleaning up..."
++    if [ -n "$CONTINUITY_PID" ]; then
++        kill -INT "$CONTINUITY_PID" 2>/dev/null || true
++        wait "$CONTINUITY_PID" 2>/dev/null || true
++    fi
+     stop_and_check_sanitizer "$CLIENT_PID" "client" || SANITIZER_FAIL=1
+     stop_and_check_sanitizer "$SERVER_PID" "server" || SANITIZER_FAIL=1
+     sleep 1
+@@ -114,11 +123,13 @@ ctrl_ok() {
+ 
+ dump_logs() {
+     echo ""
+-    echo "--- client log ---"
+-    cat "${WORK_DIR}/client.log" 2>/dev/null || true
++    echo "--- client path/connection events ---"
++    grep -Ei "path removed|removing initial|refusing path|reconnect|tunnel 200 OK|PATH_ABANDON|path closed|closing connection" \
++        "${WORK_DIR}/client.log" 2>/dev/null | tail -200 || true
+     echo ""
+-    echo "--- server log ---"
+-    cat "${WORK_DIR}/server.log" 2>/dev/null || true
++    echo "--- server path/connection events ---"
++    grep -Ei "PATH_ABANDON|path closed|closing connection|client connected|client disconnected" \
++        "${WORK_DIR}/server.log" 2>/dev/null | tail -200 || true
+ }
+ 
+ # ── Setup: network namespaces ────────────────────────────────────────────────
+@@ -127,6 +138,7 @@ echo ""
+ echo "================================================================"
+ echo "  mqvpn E2E: runtime path add/remove via control API (#4271/#4273)"
+ echo "  Binary: $MQVPN"
++echo "  Scheduler: $SCHEDULER"
+ echo "================================================================"
+ 
+ # Remove any leftovers from previous runs
+@@ -202,6 +214,7 @@ ip netns exec "$NS_SERVER" "$MQVPN" \
+     --cert "${WORK_DIR}/server.crt" \
+     --key  "${WORK_DIR}/server.key" \
+     --auth-key "$PSK" \
++    --scheduler "$SCHEDULER" \
+     --log-level debug > "${WORK_DIR}/server.log" 2>&1 &
+ SERVER_PID=$!
+ sleep 2
+@@ -222,6 +235,7 @@ ip netns exec "$NS_CLIENT" "$MQVPN" \
+     --path "$VETH_A0" \
+     --auth-key "$PSK" \
+     --insecure \
++    --scheduler "$SCHEDULER" \
+     --control-port "$CTRL_PORT" \
+     --log-level debug > "${WORK_DIR}/client.log" 2>&1 &
+ CLIENT_PID=$!
+@@ -320,6 +334,17 @@ echo "OK: list_paths shows veth-b0 and veth-c0"
+ 
+ echo ""
+ echo "=== Phase 3: remove path A via control API ==="
++
++# Keep real tunnel traffic in flight across the administrative removal.  An
++# eventual-success probe hides a reconnect-sized outage, so also require a
++# gap-free ICMP sequence and the same H3 tunnel instance.
++CONTINUITY_LOG="${WORK_DIR}/continuity.log"
++ip netns exec "$NS_CLIENT" ping -D -i 0.05 "$TUNNEL_IP" \
++    > "$CONTINUITY_LOG" 2>&1 &
++CONTINUITY_PID=$!
++sleep 1
++H3_READY_BEFORE=$(grep -c "tunnel 200 OK" "${WORK_DIR}/client.log" || true)
++
+ if ! ctrl_ok '{"cmd":"remove_path","iface":"veth-a0"}'; then
+     echo "FAIL: remove_path command rejected"
+     dump_logs; exit 1
+@@ -332,47 +357,72 @@ if ! wait_for_log "${WORK_DIR}/client.log" "path removed.*veth-a0" 10; then
+ fi
+ echo "OK: path A removed"
+ 
+-# Bug 2 assertion: tunnel must survive on secondary paths.
+-# Two valid outcomes:
+-#   Fast path  — xqc_conn_close_path() succeeded; xquic seamlessly reroutes
+-#                to B/C without reconnecting (sub-second switchover).
+-#   Fallback   — xqc_conn_close_path() returned an error (e.g. secondary paths
+-#                not yet XQC_PATH_STATE_ACTIVE); mqvpn_client_remove_path()
+-#                called xqc_h3_conn_close() → cb_h3_conn_close → tick_reconnect
+-#                rotates primary_path_idx to B and reconnects (~3–5 s).
+-# Poll for up to 15 s so both outcomes pass in CI.
+-echo "Verifying tunnel on secondary paths (Bug 2 regression check)..."
+-ELAPSED=0
+-TUNNEL_OK=0
+-while [ "$ELAPSED" -lt 15 ]; do
+-    if ip netns exec "$NS_CLIENT" ping -c 3 -W 1 "$TUNNEL_IP" >/dev/null 2>&1; then
+-        TUNNEL_OK=1
+-        break
+-    fi
+-    sleep 1
+-    ELAPSED=$((ELAPSED + 1))
+-done
+-if [ "$TUNNEL_OK" -ne 1 ]; then
+-    echo "FAIL: tunnel ping failed after removing path A (Bug 2 still present?)"
++sleep 1
++if ! ctrl_ok '{"cmd":"remove_path","iface":"veth-b0"}'; then
++    echo "FAIL: second remove_path command rejected"
++    dump_logs; exit 1
++fi
++if ! wait_for_log "${WORK_DIR}/client.log" "path removed.*veth-b0" 10; then
++    echo "FAIL: path B removal not confirmed in log within 10s"
++    dump_logs; exit 1
++fi
++echo "OK: path B removed with exactly one sibling remaining"
++
++sleep 3
++kill -INT "$CONTINUITY_PID" 2>/dev/null || true
++wait "$CONTINUITY_PID" 2>/dev/null || true
++CONTINUITY_PID=""
++
++H3_READY_AFTER=$(grep -c "tunnel 200 OK" "${WORK_DIR}/client.log" || true)
++FIRST_SEQ=$(sed -n 's/.*icmp_seq=\([0-9][0-9]*\).*/\1/p' "$CONTINUITY_LOG" | head -1)
++LAST_SEQ=$(sed -n 's/.*icmp_seq=\([0-9][0-9]*\).*/\1/p' "$CONTINUITY_LOG" | tail -1)
++RECEIVED=$(grep -c "icmp_seq=" "$CONTINUITY_LOG" || true)
++
++if [ -z "$FIRST_SEQ" ] || [ -z "$LAST_SEQ" ] || [ "$RECEIVED" -lt 80 ]; then
++    echo "FAIL: insufficient sustained tunnel traffic during path removal"
++    cat "$CONTINUITY_LOG"
+     dump_logs; exit 1
+ fi
+-echo "OK: tunnel ping works after removing path A (${ELAPSED}s)"
++EXPECTED=$((LAST_SEQ - FIRST_SEQ + 1))
++if [ "$RECEIVED" -ne "$EXPECTED" ]; then
++    echo "FAIL: tunnel traffic had a sequence gap during path removal "
++    echo "      received=$RECEIVED expected=$EXPECTED first=$FIRST_SEQ last=$LAST_SEQ"
++    cat "$CONTINUITY_LOG"
++    dump_logs; exit 1
++fi
++if [ "$H3_READY_AFTER" -ne "$H3_READY_BEFORE" ]; then
++    echo "FAIL: H3 tunnel reconnected during path removal "
++    echo "      ready_before=$H3_READY_BEFORE ready_after=$H3_READY_AFTER"
++    dump_logs; exit 1
++fi
++echo "OK: sustained tunnel traffic stayed gap-free on the original H3 connection"
+ 
+-# Verify list_paths shows only secondary paths
++# Verify list_paths shows only the final path.
+ LIST_RESP=$(ctrl_send '{"cmd":"list_paths"}')
+ if echo "$LIST_RESP" | grep -q "veth-a0"; then
+     echo "FAIL: list_paths still shows veth-a0 after removal: $LIST_RESP"
+     dump_logs; exit 1
+ fi
+-if ! echo "$LIST_RESP" | grep -q "veth-b0"; then
+-    echo "FAIL: list_paths does not show veth-b0: $LIST_RESP"
++if echo "$LIST_RESP" | grep -q "veth-b0"; then
++    echo "FAIL: list_paths still shows veth-b0 after removal: $LIST_RESP"
+     dump_logs; exit 1
+ fi
+ if ! echo "$LIST_RESP" | grep -q "veth-c0"; then
+     echo "FAIL: list_paths does not show veth-c0: $LIST_RESP"
+     dump_logs; exit 1
+ fi
+-echo "OK: list_paths shows veth-b0 and veth-c0"
++echo "OK: list_paths shows only veth-c0"
++
++LAST_REMOVE_RESP=$(ctrl_send '{"cmd":"remove_path","iface":"veth-c0"}')
++if echo "$LAST_REMOVE_RESP" | grep -q '"ok":true'; then
++    echo "FAIL: removal of the final path was accepted"
++    dump_logs; exit 1
++fi
++if ! ip netns exec "$NS_CLIENT" ping -c 3 -W 1 "$TUNNEL_IP" >/dev/null 2>&1; then
++    echo "FAIL: tunnel stopped after refused final-path removal"
++    dump_logs; exit 1
++fi
++echo "OK: final-path removal was refused and the tunnel remained healthy"
+ 
+ # ── Phase 4: test list_paths control API command ──────────────────────────
+ 
+@@ -390,14 +440,12 @@ if ! echo "$LIST_RESP" | grep -q '"paths"'; then
+     echo "FAIL: list_paths response missing paths field: $LIST_RESP"
+     dump_logs; exit 1
+ fi
+-if ! echo "$LIST_RESP" | grep -q '\["veth-b0","veth-c0"\]'; then
+-    # Order might vary, so check elements individually
+-    if ! (echo "$LIST_RESP" | grep -q "veth-b0" && echo "$LIST_RESP" | grep -q "veth-c0"); then
+-        echo "FAIL: list_paths does not contain both veth-b0 and veth-c0: $LIST_RESP"
+-        dump_logs; exit 1
+-    fi
++if echo "$LIST_RESP" | grep -q "veth-a0\\|veth-b0" \
++    || ! echo "$LIST_RESP" | grep -q '\["veth-c0"\]'; then
++    echo "FAIL: list_paths does not contain only veth-c0: $LIST_RESP"
++    dump_logs; exit 1
+ fi
+-echo "OK: list_paths response format is correct and contains expected paths"
++echo "OK: list_paths response format is correct and contains only the final path"
+ 
+ # Verify list_paths is array format with proper JSON
+ if ! echo "$LIST_RESP" | grep -qE '"paths":\s*\[[^]]*\]'; then
+@@ -415,6 +463,7 @@ echo "================================================================"
+ echo "  All tests PASSED"
+ echo "  Phase 1: single-path tunnel established on path A"
+ echo "  Phase 2: paths B/C activated via API (Bug 1 + #4273 verified)"
+-echo "  Phase 3: tunnel survives on secondary paths after removing path A (Bug 2)"
++echo "  Phase 3: sustained traffic survives two path removals without reconnecting"
++echo "           and final-path removal is refused"
+ echo "  Phase 4: list_paths control API command validated"
+ echo "================================================================"

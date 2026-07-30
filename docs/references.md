@@ -16,7 +16,8 @@ Primary and closely related public sources used for this research:
 - OpenMPTCProuter MQVPN tracker integration: [`005-mqvpn-path`](https://github.com/ysurac/openmptcprouter-feeds/blob/d935eff2aacf7f2907ac3039abadf0b57688afc9/omr-tracker/files/usr/share/omr/post-tracking.d/005-mqvpn-path)
 - MQVPN pinned path lifecycle: [`mqvpn_client.c`](https://github.com/Ysurac/mqvpn/blob/3a07dc7e359629ed6fa246139a534924b6af7975/src/mqvpn_client.c)
 - MQVPN current path lifecycle: [`mqvpn_client.c`](https://github.com/Ysurac/mqvpn/blob/93b0ed9324867473839c87d54afac92749ace73a/src/mqvpn_client.c)
-- IETF Multipath QUIC path management: [`draft-ietf-quic-multipath-19`](https://datatracker.ietf.org/doc/html/draft-ietf-quic-multipath-19)
+- MQVPN pinned xquic revision: [`05c71876`](https://github.com/Ysurac/xquic/tree/05c71876ef857b3bdd6ad2ec8da1bbe3fe178197)
+- IETF Multipath QUIC path management: [`draft-ietf-quic-multipath-21`](https://datatracker.ietf.org/doc/html/draft-ietf-quic-multipath-21)
 
 ## Attribution policy
 

@@ -121,6 +121,15 @@ install_file \
     "$KIT_DIR/patches/modemmanager/011-quectel-disable-at-over-mbim-on-wwan.patch" \
     "$OMR_FEED_DIR/modemmanager/patches/011-quectel-disable-at-over-mbim-on-wwan.patch"
 install_file \
+    "$KIT_DIR/patches/mqvpn/020-path-removal-preserve-connection.patch" \
+    "$OMR_FEED_DIR/mqvpn/patches/020-path-removal-preserve-connection.patch"
+install_file \
+    "$KIT_DIR/patches/mqvpn/021-path-removal-continuity-test.patch" \
+    "$OMR_FEED_DIR/mqvpn/patches/021-path-removal-continuity-test.patch"
+install_file \
+    "$KIT_DIR/patches/mqvpn/022-path-removal-refusal-test.patch" \
+    "$OMR_FEED_DIR/mqvpn/patches/022-path-removal-refusal-test.patch"
+install_file \
     "$KIT_DIR/overlays/openmptcprouter/common/package/base-files/files/etc/uci-defaults/99-cellular-control-owner" \
     "$OMR_DIR/common/package/base-files/files/etc/uci-defaults/99-cellular-control-owner"
 chmod 0755 "$OMR_DIR/common/package/base-files/files/etc/uci-defaults/99-cellular-control-owner"
@@ -179,6 +188,8 @@ cp -f -- "$image" "$output_image"
     printf 'MODEMMANAGER_VERSION=%s\n' "$MODEMMANAGER_VERSION"
     printf 'MODEMMANAGER_BACKPORT=%s\n' "$MODEMMANAGER_BACKPORT"
     printf 'MODEMMANAGER_QDU_GUARD=%s\n' "$MODEMMANAGER_QDU_GUARD"
+    printf 'MQVPN_SOURCE_COMMIT=%s\n' "$MQVPN_SOURCE_COMMIT"
+    printf 'MQVPN_XQUIC_COMMIT=%s\n' "$MQVPN_XQUIC_COMMIT"
     printf 'SOURCE_DATE_EPOCH=%s\n' "$SOURCE_DATE_EPOCH"
     printf 'IMAGE=%s\n' "$(basename -- "$output_image")"
     (

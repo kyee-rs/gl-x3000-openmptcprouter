@@ -85,14 +85,14 @@ state outside the VPN process itself. Very short tracker intervals create brief
 CPU bursts on the dual-core router. A modest interval increase can reduce that
 work, at the cost of proportionally slower failure detection.
 
-## MQVPN path ownership on the pinned snapshot
+## MQVPN path ownership on the custom image
 
-The pinned MQVPN treats the initial live QUIC path specially. Administratively
-removing that path forces a tunnel reconnect, while a lower-level path failure
-can continue on a survivor. Configured slot labels such as `path0=eth0` are not
-a permanent mapping to xquic path identifiers: the current initial path can
-change after a reconnect. No WAN should therefore be considered safely
-removable based only on list order.
+The unpatched snapshot treats the initial live QUIC path specially and forces a
+tunnel reconnect when it is administratively removed. The custom image removes
+that special case: every path ID uses PATH_ABANDON, and a transport refusal
+leaves the platform socket attached. Configured slot labels such as
+`path0=eth0` are still not a permanent mapping to xquic path identifiers, so
+automation must not infer path identity from list order.
 
 Automatic WAN discovery also omits interfaces that OMR Tracker considers down
 at MQVPN startup, so a transient tracker state can alter the starting path set.
@@ -111,10 +111,11 @@ This gives MQVPN a stable, explicit inventory. The pinned path-state refactor
 does not reliably preserve `BackupPath` standby semantics, so do not use backup
 mode as a substitute for explicit ownership on this snapshot.
 
-Do not test failover with `mqvpn-path remove`. Use a temporary packet black hole
-or a real link event while continuously probing `tun0`; the connection must
-remain established and the failed path should move through degraded, pending,
-and active states.
+Use a temporary packet black hole or a real link event for WAN-failure tests;
+the connection must remain established and the failed path should move through
+degraded, pending, and active states. Administrative-removal behavior has a
+separate namespace regression that requires gap-free sustained traffic, the
+same HTTP/3 connection, and refusal to remove the final path.
 
 ## OMR Tracker and live MQVPN restarts
 
