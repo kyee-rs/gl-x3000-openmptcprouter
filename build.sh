@@ -166,7 +166,10 @@ fi
 readonly image="${images[0]}"
 readonly output_image="$OUTPUT_DIR/$(basename -- "$image")"
 cp -f -- "$image" "$output_image"
-sha256sum "$output_image" > "$output_image.sha256"
+(
+    cd "$OUTPUT_DIR"
+    sha256sum "$(basename -- "$output_image")"
+) > "$output_image.sha256"
 
 {
     printf 'OMR_COMMIT=%s\n' "$OMR_COMMIT"
@@ -178,7 +181,10 @@ sha256sum "$output_image" > "$output_image.sha256"
     printf 'MODEMMANAGER_QDU_GUARD=%s\n' "$MODEMMANAGER_QDU_GUARD"
     printf 'SOURCE_DATE_EPOCH=%s\n' "$SOURCE_DATE_EPOCH"
     printf 'IMAGE=%s\n' "$(basename -- "$output_image")"
-    sha256sum "$output_image"
+    (
+        cd "$OUTPUT_DIR"
+        sha256sum "$(basename -- "$output_image")"
+    )
 } > "$OUTPUT_DIR/build-manifest.txt"
 
 printf 'Build complete: %s\n' "$output_image"
