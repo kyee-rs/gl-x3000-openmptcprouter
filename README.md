@@ -21,7 +21,7 @@ A separate development profile proved that the built-in modem can carry
 bidirectional PCIe/MBIM traffic. That experimental channel table is documented
 for research context but intentionally excluded from this build kit.
 
-The build carries fourteen narrowly scoped integration fixes:
+The build carries fifteen narrowly scoped integration fixes:
 
 1. Match PCI ID `17cb:0308`, subsystem `17cb:5201`, to the existing upstream
    `mhi_quectel_rm5xx_info` profile. This exposes `MBIM` control and
@@ -55,6 +55,9 @@ The build carries fourteen narrowly scoped integration fixes:
     disconnecting a connected ModemManager WAN after a transient probe failure.
 14. Leave a running MQVPN process to its own multipath reconnection logic;
     tracker recovery now restarts MQVPN only when the process is actually absent.
+15. Keep explicitly configured MQVPN paths under MQVPN ownership: a tracker
+    false positive can no longer administratively remove QUIC path 0 and close
+    the entire tunnel.
 
 No experimental hybrid channel table or `no_m3` profile is included.
 
@@ -125,6 +128,7 @@ WAN configuration are separate deployment steps.
 - [PCIe/MHI implementation notes](docs/pcie-mhi-implementation.md)
 - [Validation and rollback gates](docs/validation-and-rollback.md)
 - [Runtime commissioning lessons](docs/runtime-commissioning.md)
+- [Connectivity continuity research and failover validation](docs/connectivity-continuity.md)
 - [MQVPN VPS integration](docs/mqvpn-vps-integration.md)
 - [Primary references](docs/references.md)
 

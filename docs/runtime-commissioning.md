@@ -85,13 +85,17 @@ state outside the VPN process itself. Very short tracker intervals create brief
 CPU bursts on the dual-core router. A modest interval increase can reduce that
 work, at the cost of proportionally slower failure detection.
 
-## MQVPN path ordering on the pinned snapshot
+## MQVPN path ownership on the pinned snapshot
 
-MQVPN 0.7.0 treats the first generated `Path` as QUIC path 0. Removing that
-initial path forces a tunnel reconnect, while removing a later path can continue
-on the remaining path. Automatic WAN discovery also omits interfaces that OMR
-Tracker considers down at MQVPN startup, so a transient Starlink tracker state
-can accidentally make cellular path 0.
+The pinned MQVPN treats the initial live QUIC path specially. Administratively
+removing that path forces a tunnel reconnect, while a lower-level path failure
+can continue on a survivor. Configured slot labels such as `path0=eth0` are not
+a permanent mapping to xquic path identifiers: the current initial path can
+change after a reconnect. No WAN should therefore be considered safely
+removable based only on list order.
+
+Automatic WAN discovery also omits interfaces that OMR Tracker considers down
+at MQVPN startup, so a transient tracker state can alter the starting path set.
 
 For the tested GL-X3000 configuration, use explicit paths in stable order:
 
@@ -103,11 +107,14 @@ config multipath 'multipath'
         list path 'wwan0'
 ```
 
-This keeps Starlink as path 0 and makes cellular a removable secondary path.
-The pinned MQVPN path-state refactor does not reliably preserve `BackupPath`
-standby semantics, so do not use backup mode as a substitute for explicit
-ordering on this snapshot. A controlled removal of `wwan0` should complete
-without packet loss before the setup is considered commissioned.
+This gives MQVPN a stable, explicit inventory. The pinned path-state refactor
+does not reliably preserve `BackupPath` standby semantics, so do not use backup
+mode as a substitute for explicit ownership on this snapshot.
+
+Do not test failover with `mqvpn-path remove`. Use a temporary packet black hole
+or a real link event while continuously probing `tun0`; the connection must
+remain established and the failed path should move through degraded, pending,
+and active states.
 
 ## OMR Tracker and live MQVPN restarts
 
@@ -121,3 +128,14 @@ MQVPN already reconnects its paths internally, and OpenWrt's service supervisor
 plus `omr-schedule` recover a missing process. The custom feed therefore guards
 the tracker restart with `pgrep mqvpn`: tracker recovery restarts a missing
 process but does not turn a transient probe failure into a full tunnel outage.
+
+The separate MQVPN path hook also needs an ownership guard. When
+`mqvpn.multipath.auto_wan=0`, a tracker error must not call
+`mqvpn-path remove`; MQVPN's Linux platform monitor and QUIC path liveness own
+the explicit paths. Source-bound DNS checks against several independent
+resolvers are less prone to cellular ICMP false positives than the default
+rotating host list.
+
+See [connectivity continuity research](connectivity-continuity.md) for the
+captured failure, source analysis, commissioned tracker policy, and controlled
+single-WAN black-hole results.

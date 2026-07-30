@@ -34,6 +34,43 @@ require_tracker_restart_policy() {
         || fail "tracker still restarts a running MQVPN process: $1"
 }
 
+test_explicit_mqvpn_error_noop() {
+    local hook="$1"
+    local test_dir
+    test_dir="$(mktemp -d /tmp/mqvpn-explicit-path.XXXXXX)"
+    mkdir -p "$test_dir/bin"
+
+    cat >"$test_dir/bin/uci" <<'EOF'
+#!/bin/sh
+case "$3" in
+    mqvpn.settings.enable) printf '1\n' ;;
+    mqvpn.multipath.auto_wan) printf '0\n' ;;
+    *) exit 1 ;;
+esac
+EOF
+    cat >"$test_dir/bin/pgrep" <<'EOF'
+#!/bin/sh
+printf '123\n'
+EOF
+    cat >"$test_dir/bin/mqvpn-path" <<'EOF'
+#!/bin/sh
+printf '%s\n' "$*" >>"$MQVPN_TEST_CALLS"
+EOF
+    chmod +x "$test_dir/bin/uci" "$test_dir/bin/pgrep" "$test_dir/bin/mqvpn-path"
+
+    PATH="$test_dir/bin:$PATH" \
+        MQVPN_TEST_CALLS="$test_dir/calls" \
+        OMR_TRACKER_STATUS=ERROR \
+        OMR_TRACKER_PREV_STATUS=OK \
+        OMR_TRACKER_DEVICE=wwan0 \
+        OMR_TRACKER_INTERFACE=wan2 \
+        /bin/sh "$hook"
+
+    [[ ! -e "$test_dir/calls" ]] \
+        || fail "explicit MQVPN path was touched on a tracker error: $hook"
+    rm -rf "$test_dir"
+}
+
 require_string() {
     local file="$1"
     local expected="$2"
@@ -147,6 +184,7 @@ grep -Fq 'if [ -z "$lock_pid" ] || ! kill -0 "$lock_pid" 2>/dev/null; then' "$TR
 if grep -Fq 'Only act on status transitions to avoid spamming the API on every poll' "$MQVPN_PATH_HOOK"; then
     fail 'MQVPN path hook still skips healthy-state reconciliation'
 fi
+test_explicit_mqvpn_error_noop "$MQVPN_PATH_HOOK"
 grep -Fq 'https://packages.openmptcprouter.com/${OMR_RELEASE}-${OMR_KERNEL}/${OMR_REAL_TARGET}/luci/packages.adb' "$OMR_DIR/build.sh" \
     || fail 'OMR build script lacks versioned HTTPS APK feeds'
 
@@ -248,6 +286,7 @@ grep -Fq 'if [ -z "$lock_pid" ] || ! kill -0 "$lock_pid" 2>/dev/null; then' "$in
 if grep -Fq 'Only act on status transitions to avoid spamming the API on every poll' "$installed_mqvpn_path_hook"; then
     fail 'installed MQVPN path hook still skips healthy-state reconciliation'
 fi
+test_explicit_mqvpn_error_noop "$installed_mqvpn_path_hook"
 
 printf 'OMR=%s\n' "$OMR_COMMIT"
 printf 'OMR_FEED=%s\n' "$OMR_FEED_COMMIT"

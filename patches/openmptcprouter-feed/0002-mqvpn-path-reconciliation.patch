@@ -77,10 +77,19 @@ index 21a1395..ef51057 100755
  		if mkdir "$lock_dir" 2>/dev/null; then
  			printf '%s\n' "$$" >"$lock_dir/pid"
 diff --git a/omr-tracker/files/usr/share/omr/post-tracking.d/005-mqvpn-path b/omr-tracker/files/usr/share/omr/post-tracking.d/005-mqvpn-path
-index 9c50774..2e34d7a 100755
+index d6148d00..6f77b442 100755
 --- a/omr-tracker/files/usr/share/omr/post-tracking.d/005-mqvpn-path
 +++ b/omr-tracker/files/usr/share/omr/post-tracking.d/005-mqvpn-path
-@@ -41,9 +41,6 @@ if [ "$OMR_TRACKER_STATUS" = "ERROR" ]; then
+@@ -29,2 +29,8 @@ mqvpn_path_exists() {
+ }
++
++# Explicit paths are MQVPN-owned. Removing QUIC path 0 closes the whole tunnel.
++if [ "$OMR_TRACKER_STATUS" = "ERROR" ] && [ "$(uci -q get mqvpn.multipath.auto_wan)" = "0" ]; then
++	exit 0
++fi
++
+ if [ "$(uci -q get mqvpn.interface.route_via_server)" = "1" ]; then
+@@ -41,9 +47,6 @@ if [ "$OMR_TRACKER_STATUS" = "ERROR" ]; then
  	exit 0
  fi
  

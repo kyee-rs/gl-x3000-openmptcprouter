@@ -13,6 +13,10 @@ Primary and closely related public sources used for this research:
 - Public GL-X3000 early PCIe PM bootarg: [common DTS](https://raw.githubusercontent.com/vjt/openwrt-glinet-x3000/openwrt-25.12/target/linux/mediatek/dts/mt7981a-glinet-gl-x3000-xe3000-common.dtsi)
 - Independent GL-X3000 build and modem recipe: [arachsys-hosts/gl-x3000](https://github.com/arachsys-hosts/gl-x3000)
 - OpenWrt mobile dynamic child behavior: [openwrt/packages issue #16817](https://github.com/openwrt/packages/issues/16817)
+- OpenMPTCProuter MQVPN tracker integration: [`005-mqvpn-path`](https://github.com/ysurac/openmptcprouter-feeds/blob/d935eff2aacf7f2907ac3039abadf0b57688afc9/omr-tracker/files/usr/share/omr/post-tracking.d/005-mqvpn-path)
+- MQVPN pinned path lifecycle: [`mqvpn_client.c`](https://github.com/Ysurac/mqvpn/blob/3a07dc7e359629ed6fa246139a534924b6af7975/src/mqvpn_client.c)
+- MQVPN current path lifecycle: [`mqvpn_client.c`](https://github.com/Ysurac/mqvpn/blob/93b0ed9324867473839c87d54afac92749ace73a/src/mqvpn_client.c)
+- IETF Multipath QUIC path management: [`draft-ietf-quic-multipath-19`](https://datatracker.ietf.org/doc/html/draft-ietf-quic-multipath-19)
 
 ## Attribution policy
 
