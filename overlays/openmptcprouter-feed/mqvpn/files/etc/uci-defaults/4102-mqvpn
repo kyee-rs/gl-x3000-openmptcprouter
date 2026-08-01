@@ -1,0 +1,32 @@
+#!/bin/sh
+
+if [ "$(uci -q get mqvpn.interface.tun_name)" = "" ]; then
+	uci -q batch <<-EOF >/dev/null
+		set mqvpn.interface=interface
+		set mqvpn.interface.tun_name=tun0
+		commit mqvpn
+	EOF
+fi
+
+# The pre-0.14.1 integration used "backup" as a scheduler name and split
+# explicit interfaces between primary_path and backup_path. Upstream 0.14.1
+# supports wlb, wlb_udp_pin, minrtt, and backup_fec; "backup" is not a valid
+# scheduler. Migrate only that legacy shape, preserving every explicit path as
+# an active WLB path so a primary black hole can use the surviving WAN.
+if [ "$(uci -q get mqvpn.multipath.scheduler)" = "backup" ]; then
+	primary_paths="$(uci -q get mqvpn.multipath.primary_path)"
+	backup_paths="$(uci -q get mqvpn.multipath.backup_path)"
+
+	uci -q set mqvpn.multipath.scheduler='wlb'
+	if [ -n "$primary_paths$backup_paths" ]; then
+		uci -q delete mqvpn.multipath.path
+		for path in $primary_paths $backup_paths; do
+			uci -q add_list mqvpn.multipath.path="$path"
+		done
+		uci -q delete mqvpn.multipath.primary_path
+		uci -q delete mqvpn.multipath.backup_path
+	fi
+	uci -q commit mqvpn
+fi
+
+exit 0

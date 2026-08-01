@@ -89,7 +89,6 @@ printf '%s\n' '== Filename-only identity and endpoint review =='
 metadata_patterns=(
   '(?i)(imei|imsi|iccid|msisdn|eid|sim[_ -]?(pin|puk)|serial([ _-]?number)?)[[:space:]]*[:=]'
   '(?i)\b([0-9a-f]{2}:){5}[0-9a-f]{2}\b'
-  '\b([0-9]{1,3}\.){3}[0-9]{1,3}\b'
   '(?i)\b(ssh|scp|sftp|rsync)[[:space:]]+[^[:space:]]+@'
 )
 
@@ -107,6 +106,31 @@ for pattern in "${metadata_patterns[@]}"; do
     failures=1
   fi
 done
+
+# Loopback, wildcard, and RFC 5737 TEST-NET addresses are safe package
+# defaults and documentation examples. Review every other literal IPv4 address
+# without printing its value.
+ipv4_pattern='\b([0-9]{1,3}\.){3}[0-9]{1,3}\b'
+ipv4_candidates="$(rg -l --no-ignore --hidden --glob '!.git/**' \
+  --glob '!**/public-release-preflight.sh' -e "$ipv4_pattern" .)"
+ipv4_matches=''
+while IFS= read -r path; do
+  [[ -n "$path" ]] || continue
+  if sed -E \
+      -e 's/0\.0\.0\.0//g' \
+      -e 's/127\.([0-9]{1,3}\.){2}[0-9]{1,3}//g' \
+      -e 's/192\.0\.2\.[0-9]{1,3}//g' \
+      -e 's/198\.51\.100\.[0-9]{1,3}//g' \
+      -e 's/203\.0\.113\.[0-9]{1,3}//g' \
+      "$path" | rg -q -e "$ipv4_pattern"; then
+    ipv4_matches+="${path}"$'\n'
+  fi
+done <<<"$ipv4_candidates"
+if [[ -n "$ipv4_matches" ]]; then
+  printf '%s\n' 'REVIEW files containing non-documentation IPv4 addresses:' >&2
+  printf '%s' "$ipv4_matches" >&2
+  failures=1
+fi
 
 printf '%s\n' '== Gitleaks working-tree and history scan =='
 if [[ "${GITLEAKS_PRECHECKED:-0}" == 1 ]]; then

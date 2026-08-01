@@ -45,25 +45,25 @@ Carrier-side public-address churn occurred shortly before the event, but the
 local MBIM session and data counters stayed live. A changed carrier NAT address
 is therefore not, by itself, evidence that the cellular data link is down.
 
-## Why the behavior is reproducible
+## Why the behavior was reproducible
 
-The pinned MQVPN source treats an administrative removal of QUIC path 0 as a
-connection-wide operation. Its client explicitly closes the HTTP/3 connection.
-The reviewed current upstream source retains that policy.
+The previously pinned MQVPN source treated an administrative removal of QUIC
+path 0 as a connection-wide operation. Its client explicitly closes the HTTP/3
+connection.
 
 Linux link and address events take a different path through MQVPN. Its platform
 monitor handles real netlink disappearance as a platform-owned path drop, so
 the surviving path can continue carrying the existing connection. OMR
 Tracker's control command bypassed that lower-level failure handling.
 
-The latest OMR feed still calls `mqvpn-path remove` on a tracker error. Updating
-only MQVPN or only OMR Tracker therefore does not remove this integration
-hazard.
+The OMR feed still calls `mqvpn-path remove` on a tracker error. Updating only
+MQVPN therefore does not remove the ownership conflict between an
+application-agnostic tracker and an explicitly configured transport path.
 
 Primary source:
 
 - [pinned MQVPN client path lifecycle](https://github.com/Ysurac/mqvpn/blob/3a07dc7e359629ed6fa246139a534924b6af7975/src/mqvpn_client.c)
-- [current MQVPN client path lifecycle](https://github.com/Ysurac/mqvpn/blob/93b0ed9324867473839c87d54afac92749ace73a/src/mqvpn_client.c)
+- [selected MQVPN 0.14.1 client path lifecycle](https://github.com/Ysurac/mqvpn/blob/e6fcf7e6943d98d465155e27eb5279ac082051de/src/mqvpn_client.c)
 - [current OMR MQVPN tracker hook](https://github.com/ysurac/openmptcprouter-feeds/blob/d935eff2aacf7f2907ac3039abadf0b57688afc9/omr-tracker/files/usr/share/omr/post-tracking.d/005-mqvpn-path)
 - [IETF Multipath QUIC path-management draft](https://datatracker.ietf.org/doc/html/draft-ietf-quic-multipath-21)
 
@@ -83,42 +83,26 @@ explicit-path `ERROR` does not invoke `mqvpn-path`.
 ## Transport-level correction
 
 The tracker ownership rule prevents the captured false-positive path deletion,
-but it does not make the MQVPN control API safe for legitimate administrative
-changes. The transport correction therefore removes MQVPN's path-0 special
-case:
+but the old transport also had path-removal and address-change races. This build
+now selects upstream MQVPN 0.14.1 on both router and VPS. Its path state machine,
+netlink recovery, backup-path handling, and removal error policy supersede the
+three local patches previously carried against the 0.8.0 client.
 
-1. Every live path is closed with xquic's `xqc_conn_close_path()`, which emits
-   PATH_ABANDON without closing the QUIC connection.
-2. If xquic refuses the operation, `mqvpn_client_remove_path()` returns an
-   error instead of falling back to `xqc_h3_conn_close()`.
-3. The Linux platform caller checks that result before deleting the libevent
-   watcher, compacting its path table, or closing the UDP socket.
-
-No xquic source change is required. The pinned xquic implementation already
-selects another active path for PATH_ABANDON and correctly refuses to abandon
-the only active path. The defect was MQVPN's connection-close fallback and the
-Linux caller's ignored return value.
-
-This matches the Multipath QUIC path model: path 0 is not permanently special
-after the handshake, and the draft explicitly permits abandoning it while
-another path carries the connection. Refusal is the safe failure mode when no
-validated sibling exists.
-
-The exact pinned MQVPN and xquic revisions were built in an isolated Linux
-network-namespace harness. Before the correction, the sustained-traffic test
-lost 58 of 78 tunnel probes after removing path 0. With the correction:
-
-- sustained traffic remained gap-free on the original HTTP/3 connection;
-- path 0 and then a secondary path were removed consecutively;
-- the second removal exercised the exact one-surviving-path topology;
-- an unusable configured sibling forced xquic's only-active-path refusal, and
-  the Linux caller preserved the active path and socket;
-- removal of the final path was refused without damaging the tunnel; and
-- all seven schedulers passed: MinRTT, WLB, WLB UDP pinning, WRTT, RAP,
-  backup, and backup+FEC.
+The selected source, xquic, and BoringSSL revisions are pinned. BoringSSL is a
+`Release` build and the package declares `libstdcpp`, both of which are checked
+by the build validator. The old patches remain as historical R&D artifacts;
+they are no longer applied to firmware.
 
 The tracker guard remains useful defense in depth and preserves clear ownership:
 status probes still should not mutate an explicitly configured MQVPN path list.
+
+The upgrade must also migrate the old local scheduler policy. `backup` is not a
+supported MQVPN 0.14.1 scheduler; upstream supports `wlb`, `wlb_udp_pin`,
+`minrtt`, and experimental `backup_fec`. Preserving `scheduler=backup` plus
+separate `primary_path` and `backup_path` lists registered cellular but failed
+to schedule tunnel datagrams onto it during a Starlink black hole. The build
+now migrates that legacy shape to upstream-default `wlb` with both explicit
+paths active.
 
 ## WAN health policy
 
@@ -165,24 +149,27 @@ The live router was tested with an ephemeral nftables table that blocked MQVPN
 UDP in both directions on one physical interface at a time. It did not take
 interfaces down, alter netifd state, or persist rules.
 
-| Simulated failure | Duration | Tunnel probes | MQVPN PID | Configured paths |
+| Simulated failure | Duration | ICMP tunnel probes | DNS/HTTPS | MQVPN PID |
 | --- | ---: | ---: | --- | --- |
-| Ethernet path black hole | 15 seconds | 300/300 | unchanged | unchanged |
-| Cellular path black hole | 15 seconds | 299/300 | unchanged | unchanged |
+| Starlink black hole, legacy unsupported `backup` policy | 15 seconds | 0/15 | passed at end | unchanged |
+| Starlink black hole, corrected active WLB policy | 20 seconds | 18/20 | passed | unchanged |
+| Cellular black hole, corrected active WLB policy | 20 seconds | 15/20 | passed | unchanged |
 | Synthetic cellular tracker `ERROR` | immediate | no tunnel change | unchanged | unchanged |
 
-During both live black-hole tests MQVPN degraded the failed path, kept the connection
-established on the survivor, and revalidated the path after traffic was
-restored. There was no reconnect cycle or tunnel reset. The single lost
-datagram in the cellular test is below the level that resets a TCP session;
-TCP retransmission preserves SSH and web connections.
+With active WLB, both live black-hole tests kept the connection established on
+the survivor and revalidated the path after traffic was restored. There was no
+MQVPN restart, reconnect cycle, tunnel reset, DNS failure, or HTTPS failure.
+Raw datagrams still experienced transition loss while QUIC detected the black
+hole; WLB is seamless at the session level, not packet duplication. TCP
+retransmission preserves SSH and web sessions across that short loss window.
 
-The deployed MQVPN binary reports that FEC was not compiled in. Enabling
+The selected router MQVPN build does not enable FEC. Enabling
 `backup_fec` would require compatible client and server rebuilds and adds
 roughly one repair packet per three source packets with the pinned defaults.
-That overhead is not justified to hide one transition datagram for a primarily
-TCP workload. `minrtt` remains the appropriate scheduler for asymmetric
-Starlink and cellular latency.
+It remains experimental upstream and is not enabled silently. The commissioned
+`wlb` scheduler is upstream's recommendation for general use and asymmetric
+links; it keeps both WANs active and automatically weights them using loss,
+RTT, and congestion-window metrics.
 
 ## PCIe power-management finding
 

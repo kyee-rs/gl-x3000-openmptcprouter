@@ -102,14 +102,17 @@ For the tested GL-X3000 configuration, use explicit paths in stable order:
 ```uci
 config multipath 'multipath'
         option auto_wan '0'
-        option scheduler 'minrtt'
+        option scheduler 'wlb'
         list path 'eth0'
         list path 'wwan0'
 ```
 
-This gives MQVPN a stable, explicit inventory. The pinned path-state refactor
-does not reliably preserve `BackupPath` standby semantics, so do not use backup
-mode as a substitute for explicit ownership on this snapshot.
+This gives MQVPN a stable, explicit inventory and uses the scheduler recommended
+upstream for general multipath and asymmetric links. MQVPN 0.14.1 does not
+support `backup` as a scheduler name. Do not preserve the old combination of
+`scheduler=backup`, `primary_path`, and `backup_path`: it can leave cellular
+registered without scheduling tunnel datagrams onto it during a Starlink black
+hole. The build's UCI default migrates that legacy shape to active WLB paths.
 
 Use a temporary packet black hole or a real link event for WAN-failure tests;
 the connection must remain established and the failed path should move through

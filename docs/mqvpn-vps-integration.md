@@ -60,12 +60,18 @@ firewall recreation.
 
 The server requires:
 
-- the version-matched MQVPN package and library;
+- the version-matched MQVPN package and library (0.14.1 for this build);
 - a root-owned server configuration;
 - a root-owned authentication value shared with the router;
 - a private TLS key and public certificate;
 - a systemd service enabled at boot; and
 - a UDP listener on `MQVPN_PORT`.
+
+Upgrade the server before the router. Keep the existing server process running
+while staging the new package, verify the release checksum and linkage, then
+restart the server once. Only after its listener is healthy should the router
+package be installed and its client restarted. Retain the previous binaries,
+configuration, and service unit on both sides for immediate rollback.
 
 Shorewall must classify the MQVPN tunnel wildcard as `vpn`, allow `vpn` to
 `net`, and masquerade `MQVPN_SUBNET` through the VM's external interface. IPv4

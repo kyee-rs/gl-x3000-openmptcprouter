@@ -122,9 +122,6 @@ readonly BBR_PATCH="$OMR_DIR/6.18/target/linux/generic/hack-6.18/999-tcp_bbr-v3-
 readonly DTS_SOURCE="$OMR_DIR/6.18/target/linux/mediatek/dts/mt7981a-glinet-gl-x3000.dts"
 readonly MM_MHI_PATCH="$OMR_FEED_DIR/modemmanager/patches/010-broadband-modem-mbim-handle-mhi-pci-generic.patch"
 readonly MM_QDU_PATCH="$OMR_FEED_DIR/modemmanager/patches/011-quectel-disable-at-over-mbim-on-wwan.patch"
-readonly MQVPN_PATH_PATCH="$OMR_FEED_DIR/mqvpn/patches/020-path-removal-preserve-connection.patch"
-readonly MQVPN_CONTINUITY_TEST="$OMR_FEED_DIR/mqvpn/patches/021-path-removal-continuity-test.patch"
-readonly MQVPN_REFUSAL_TEST="$OMR_FEED_DIR/mqvpn/patches/022-path-removal-refusal-test.patch"
 readonly OWNER_GUARD="$OMR_DIR/common/package/base-files/files/etc/uci-defaults/99-cellular-control-owner"
 readonly FW4_COMPAT="$OMR_DIR/common/package/base-files/files/etc/uci-defaults/99-fw4-videochat-compat"
 readonly MPTCP_SYNC="$OMR_DIR/common/package/base-files/files/etc/hotplug.d/iface/31-mptcp-modemmanager-endpoint-sync"
@@ -140,9 +137,6 @@ require_file "$BBR_PATCH"
 require_file "$DTS_SOURCE"
 require_file "$MM_MHI_PATCH"
 require_file "$MM_QDU_PATCH"
-require_file "$MQVPN_PATH_PATCH"
-require_file "$MQVPN_CONTINUITY_TEST"
-require_file "$MQVPN_REFUSAL_TEST"
 require_file "$OWNER_GUARD"
 require_file "$FW4_COMPAT"
 require_file "$MPTCP_SYNC"
@@ -167,12 +161,14 @@ cmp -s "$MM_MHI_PATCH" "$KIT_DIR/patches/modemmanager/010-broadband-modem-mbim-h
     || fail 'ModemManager MHI patch differs from the audited build-kit copy'
 cmp -s "$MM_QDU_PATCH" "$KIT_DIR/patches/modemmanager/011-quectel-disable-at-over-mbim-on-wwan.patch" \
     || fail 'ModemManager WWAN QDU patch differs from the audited build-kit copy'
-cmp -s "$MQVPN_PATH_PATCH" "$KIT_DIR/patches/mqvpn/020-path-removal-preserve-connection.patch" \
-    || fail 'MQVPN path-removal patch differs from the audited build-kit copy'
-cmp -s "$MQVPN_CONTINUITY_TEST" "$KIT_DIR/patches/mqvpn/021-path-removal-continuity-test.patch" \
-    || fail 'MQVPN continuity regression differs from the audited build-kit copy'
-cmp -s "$MQVPN_REFUSAL_TEST" "$KIT_DIR/patches/mqvpn/022-path-removal-refusal-test.patch" \
-    || fail 'MQVPN path-refusal regression differs from the audited build-kit copy'
+cmp -s "$MQVPN_MAKEFILE" "$KIT_DIR/overlays/openmptcprouter-feed/mqvpn/Makefile" \
+    || fail 'MQVPN recipe differs from the audited build-kit copy'
+cmp -s "$MQVPN_INIT" "$KIT_DIR/overlays/openmptcprouter-feed/mqvpn/files/etc/init.d/mqvpn" \
+    || fail 'MQVPN init script differs from the audited build-kit copy'
+cmp -s "$MQVPN_DEFAULTS" "$KIT_DIR/overlays/openmptcprouter-feed/mqvpn/files/etc/uci-defaults/4102-mqvpn" \
+    || fail 'MQVPN defaults differ from the audited build-kit copy'
+cmp -s "$MQVPN_HELPER" "$KIT_DIR/overlays/openmptcprouter-feed/mqvpn/files/usr/bin/mqvpn-path" \
+    || fail 'MQVPN path helper differs from the audited build-kit copy'
 cmp -s "$OWNER_GUARD" "$KIT_DIR/overlays/openmptcprouter/common/package/base-files/files/etc/uci-defaults/99-cellular-control-owner" \
     || fail 'cellular ownership guard differs from the audited build-kit copy'
 cmp -s "$FW4_COMPAT" "$KIT_DIR/overlays/openmptcprouter/common/package/base-files/files/etc/uci-defaults/99-fw4-videochat-compat" \
@@ -197,10 +193,22 @@ grep -Fq '$(INSTALL_BIN) ./files/usr/bin/mqvpn-path $(1)/usr/bin/mqvpn-path' "$M
     || fail 'mqvpn-path is not installed as an executable'
 grep -Fqx "PKG_SOURCE_VERSION:=$MQVPN_SOURCE_COMMIT" "$MQVPN_MAKEFILE" \
     || fail 'MQVPN package source revision is not the audited commit'
-grep -Fqx 'PKG_RELEASE:=3' "$MQVPN_MAKEFILE" \
-    || fail 'MQVPN package release was not bumped for the connection-preserving fix'
+grep -Fqx 'PKG_VERSION:=0.14.1' "$MQVPN_MAKEFILE" \
+    || fail 'MQVPN package is not the selected 0.14.1 release'
+grep -Fqx 'PKG_RELEASE:=6' "$MQVPN_MAKEFILE" \
+    || fail 'MQVPN package release was not bumped for the optimized pinned build'
+grep -Fq 'DEPENDS:=+kmod-tun +libevent2 +libstdcpp' "$MQVPN_MAKEFILE" \
+    || fail 'MQVPN package does not declare its libstdc++ runtime dependency'
+grep -Fqx "BSSL_COMMIT:=$MQVPN_BORINGSSL_COMMIT" "$MQVPN_MAKEFILE" \
+    || fail 'MQVPN BoringSSL revision is not pinned to the audited commit'
+grep -Fq -- '-DCMAKE_BUILD_TYPE=Release' "$MQVPN_MAKEFILE" \
+    || fail 'MQVPN BoringSSL build is not optimized'
 grep -Fq "uci -q set mqvpn.control.control_port='9091'" "$MQVPN_DEFAULTS" \
     || fail 'MQVPN localhost control API is not enabled by default'
+grep -Fq "uci -q set mqvpn.multipath.scheduler='wlb'" "$MQVPN_DEFAULTS" \
+    || fail 'MQVPN defaults do not migrate the unsupported legacy backup scheduler'
+grep -Fq 'uci -q delete mqvpn.multipath.backup_path' "$MQVPN_DEFAULTS" \
+    || fail 'MQVPN defaults do not migrate the legacy backup path list'
 require_tracker_restart_policy "$TRACKER_ERROR"
 grep -Fq 'if [ -z "$lock_pid" ] || ! kill -0 "$lock_pid" 2>/dev/null; then' "$TRACKER_UP" \
     || fail 'tracker does not recover PID-less stale locks'
@@ -248,33 +256,27 @@ mapfile -t mm_packages < <(find "$SOURCE_ROOT/bin/packages" -type f \
 [[ "${#mm_packages[@]}" -gt 0 ]] || fail 'ModemManager r6 APK not found'
 
 mapfile -t mqvpn_build_dirs < <(find "$SOURCE_ROOT/build_dir" -type d \
-    -name 'mqvpn-0.7.0' -print | sort)
+    -name 'mqvpn-0.14.1' -print | sort)
 [[ "${#mqvpn_build_dirs[@]}" -gt 0 ]] || fail 'MQVPN build directory not found'
 
-# OpenWrt's final clean-build pass can prune unpacked sources after packaging.
-# Audit them when retained; the mandatory checks below cover the built binary,
-# release-bumped APK, and installed binary extracted from the final image.
-mapfile -t mqvpn_sources < <(find "$SOURCE_ROOT/build_dir" -type f \
-    -path '*/mqvpn-0.7.0/src/mqvpn_client.c' -print | sort)
-if [[ "${#mqvpn_sources[@]}" -gt 0 ]]; then
-    readonly mqvpn_source="${mqvpn_sources[0]}"
-    readonly mqvpn_platform_source="$(dirname -- "$mqvpn_source")/platform/linux/platform_linux.c"
-    require_file "$mqvpn_platform_source"
-    grep -Fq 'refusing path removal: xqc_conn_close_path' "$mqvpn_source" \
-        || fail 'MQVPN client still lacks path-scoped removal refusal'
-    grep -Fq 'if (mqvpn_client_remove_path(p->client, removed_handle) != MQVPN_OK)' \
-        "$mqvpn_platform_source" \
-        || fail 'MQVPN Linux platform still tears down paths after transport refusal'
+readonly mqvpn_build_dir="${mqvpn_build_dirs[0]}"
+readonly mqvpn_bssl_dir="$mqvpn_build_dir/third_party/xquic/third_party/boringssl"
+if [[ -d "$mqvpn_bssl_dir/.git" ]]; then
+    check_revision "$mqvpn_bssl_dir" "$MQVPN_BORINGSSL_COMMIT" BoringSSL
+fi
+if [[ -f "$mqvpn_bssl_dir/build/CMakeCache.txt" ]]; then
+    grep -Fqx 'CMAKE_BUILD_TYPE:STRING=Release' "$mqvpn_bssl_dir/build/CMakeCache.txt" \
+        || fail 'compiled BoringSSL cache is not a Release build'
 fi
 
 mapfile -t mqvpn_binaries < <(find "$SOURCE_ROOT/build_dir" -type f \
     -path '*/root-mediatek/usr/sbin/mqvpn' -print | sort)
 [[ "${#mqvpn_binaries[@]}" -gt 0 ]] || fail 'installed MQVPN binary not found'
-require_substring "${mqvpn_binaries[0]}" 'refusing path removal: xqc_conn_close_path'
+require_substring "${mqvpn_binaries[0]}" 'mqvpn %s'
 
 mapfile -t mqvpn_packages < <(find "$SOURCE_ROOT/bin/packages" -type f \
-    -name 'mqvpn-0.7.0-r3.apk' -print | sort)
-[[ "${#mqvpn_packages[@]}" -gt 0 ]] || fail 'patched MQVPN r3 APK not found'
+    -name 'mqvpn-0.14.1-r6.apk' -print | sort)
+[[ "${#mqvpn_packages[@]}" -gt 0 ]] || fail 'MQVPN 0.14.1-r6 APK not found'
 
 readonly TARGET_BIN_DIR="$SOURCE_ROOT/bin/targets/mediatek/filogic"
 mapfile -t images < <(find "$TARGET_BIN_DIR" -maxdepth 1 -type f \
@@ -311,7 +313,7 @@ require_file "$installed_mqvpn_path_hook"
 [[ -x "$installed_fw4_compat" ]] || fail 'installed fw4 video-chat compatibility script is not executable'
 [[ -x "$installed_mptcp_sync" ]] || fail 'installed MPTCP endpoint synchronization hook is not executable'
 [[ -x "$installed_mqvpn_helper" ]] || fail 'installed mqvpn-path helper is not executable'
-require_substring "$installed_mqvpn" 'refusing path removal: xqc_conn_close_path'
+require_substring "$installed_mqvpn" 'mqvpn %s'
 grep -Fqx "https://download.openmptcprouter.com/release/${OMR_RELEASE}-${OMR_KERNEL}/${OMR_TARGET}/targets/mediatek/filogic/packages/packages.adb" "$distfeeds" \
     || fail 'target package feed is not the public version-matched HTTPS endpoint'
 for repository in luci packages base routing telephony; do
@@ -335,6 +337,10 @@ grep -Fq 'mptcp-endpoint-sync' "$installed_mptcp_sync" \
     || fail 'installed MPTCP hook lacks its audit log marker'
 grep -Fq "uci -q set mqvpn.control.control_port='9091'" "$installed_mqvpn_defaults" \
     || fail 'installed MQVPN defaults lack the control API port'
+grep -Fq "uci -q set mqvpn.multipath.scheduler='wlb'" "$installed_mqvpn_defaults" \
+    || fail 'installed MQVPN defaults lack the legacy scheduler migration'
+grep -Fq 'uci -q delete mqvpn.multipath.backup_path' "$installed_mqvpn_defaults" \
+    || fail 'installed MQVPN defaults lack the legacy path migration'
 require_tracker_restart_policy "$installed_tracker_error"
 grep -Fq 'if [ -z "$lock_pid" ] || ! kill -0 "$lock_pid" 2>/dev/null; then' "$installed_tracker_up" \
     || fail 'installed tracker does not recover PID-less stale locks'
@@ -351,6 +357,7 @@ printf 'MODEMMANAGER=%s+%s+%s\n' \
     "$MODEMMANAGER_VERSION" "$MODEMMANAGER_BACKPORT" "$MODEMMANAGER_QDU_GUARD"
 printf 'MQVPN=%s\n' "$MQVPN_SOURCE_COMMIT"
 printf 'XQUIC=%s\n' "$MQVPN_XQUIC_COMMIT"
+printf 'BORINGSSL=%s\n' "$MQVPN_BORINGSSL_COMMIT"
 printf 'IMAGE_SHA256='
 sha256sum "${images[0]}" | awk '{print $1}'
 printf 'VALIDATION=passed\n'

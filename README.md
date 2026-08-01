@@ -21,7 +21,7 @@ A separate development profile proved that the built-in modem can carry
 bidirectional PCIe/MBIM traffic. That experimental channel table is documented
 for research context but intentionally excluded from this build kit.
 
-The build carries sixteen narrowly scoped integration fixes:
+The build carries eighteen narrowly scoped integration fixes:
 
 1. Match PCI ID `17cb:0308`, subsystem `17cb:5201`, to the existing upstream
    `mhi_quectel_rm5xx_info` profile. This exposes `MBIM` control and
@@ -57,9 +57,15 @@ The build carries sixteen narrowly scoped integration fixes:
     tracker recovery now restarts MQVPN only when the process is actually absent.
 15. Keep explicitly configured MQVPN paths under MQVPN ownership: tracker
     verdicts cannot administratively delete them.
-16. Make MQVPN administrative path removal connection-preserving for every QUIC
-    path ID, including path 0. A failed PATH_ABANDON now leaves the platform
-    socket intact instead of closing the HTTP/3 connection.
+16. Upgrade both sides of the MQVPN protocol boundary to 0.14.1, which includes
+    the upstream path state machine, address-change recovery, backup-path, and
+    path-removal fixes that supersede the older local transport patch.
+17. Pin MQVPN's BoringSSL input to the revision used by the upstream release,
+    compile it as `Release`, and declare the new binary's `libstdcpp` runtime
+    dependency.
+18. Migrate the unsupported legacy MQVPN `backup` scheduler and split
+    primary/backup path lists to upstream `wlb` with both configured WANs
+    active, so a Starlink black hole can immediately use cellular.
 
 No experimental hybrid channel table or `no_m3` profile is included.
 
@@ -81,11 +87,11 @@ cleans the dedicated source clones before applying this kit, which prevents a
 stale experimental patch from leaking into a later image. Use a separate
 worktree for any source changes you want to keep.
 
-The firmware, MQVPN, and xquic source revisions are pinned, but this is not yet a claim of
-byte-for-byte reproducibility: the Debian base tag, Debian package repository,
-and parts of the upstream build banner can change over time. Treat every output
-as a new candidate, record its checksum, and rerun the complete validation
-matrix.
+The firmware, MQVPN, xquic, and BoringSSL source revisions are pinned, but this
+is not yet a claim of byte-for-byte reproducibility: the Debian base tag,
+Debian package repository, and parts of the upstream build banner can change
+over time. Treat every output as a new candidate, record its checksum, and
+rerun the complete validation matrix.
 
 For a quick source/patch preparation without compiling:
 
@@ -140,11 +146,9 @@ All audited revisions are recorded in `manifest.lock`. The validation script
 checks the OpenMPTCProuter, feed, and OpenWrt revisions; compiled device-tree
 boot arguments; kernel module PCI alias and channel profile; absence of the
 experimental hybrid profile and installed `mhi_net`; the ModemManager
-backport; the exact MQVPN patch inputs, release-bumped APK, and installed binary
-marker; and the final sysupgrade archive. The accompanying MQVPN namespace
-regression keeps sustained tunnel traffic in flight through two consecutive
-path removals, rejects removal of the final path, proves a transport refusal
-preserves the active socket, and can be run against every supported scheduler.
+backport; the exact MQVPN, xquic, and BoringSSL pins; the optimized BoringSSL
+build mode; the declared C++ runtime dependency; the release-bumped APK and
+installed binary CLI marker; and the final sysupgrade archive.
 
 ## License
 
