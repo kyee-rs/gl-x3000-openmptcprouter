@@ -55,6 +55,8 @@ lint:
 	git apply --numstat < patches/openmptcprouter/0003-linux-6.18-fix-bbr-div-u64.patch
 	git apply --numstat < patches/openmptcprouter-feed/0001-modemmanager-bump-release.patch
 	git apply --numstat < patches/openmptcprouter-feed/0002-mqvpn-path-reconciliation.patch
+	git apply --numstat < patches/openmptcprouter-feed/0003-guard-mqvpn-transport-failover.patch
+	git apply --numstat < patches/mqvpn/023-bounded-reactivate-reconnect.patch
 
 preflight: lint
 	scripts/public-release-preflight.sh

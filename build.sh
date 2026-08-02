@@ -116,10 +116,16 @@ apply_patch_exact \
 apply_patch_exact \
     "$OMR_FEED_DIR" \
     "$KIT_DIR/patches/openmptcprouter-feed/0002-mqvpn-path-reconciliation.patch"
+apply_patch_exact \
+    "$OMR_FEED_DIR" \
+    "$KIT_DIR/patches/openmptcprouter-feed/0003-guard-mqvpn-transport-failover.patch"
 
 install_tree \
     "$KIT_DIR/overlays/openmptcprouter-feed/mqvpn" \
     "$OMR_FEED_DIR/mqvpn"
+install_file \
+    "$KIT_DIR/patches/mqvpn/023-bounded-reactivate-reconnect.patch" \
+    "$OMR_FEED_DIR/mqvpn/patches/023-bounded-reactivate-reconnect.patch"
 
 install_file \
     "$KIT_DIR/config/config-gl-x3000" \

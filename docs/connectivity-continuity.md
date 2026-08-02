@@ -96,6 +96,52 @@ they are no longer applied to firmware.
 The tracker guard remains useful defense in depth and preserves clear ownership:
 status probes still should not mutate an explicitly configured MQVPN path list.
 
+### Dead-backup route guard
+
+The tracker integration also used administrative `ifstatus up=true` as proof
+that the sibling WAN could carry the VPS route. A modem can remain
+administratively connected while its data plane is a black hole. Moving the
+only VPS host route to that path interrupts the otherwise healthy MQVPN
+connection on the surviving WAN.
+
+The patched `002-error` infers transport ownership from the explicit MQVPN path
+list. It moves the VPS host route only when a source-bound probe to the VPS
+succeeds through the sibling device. Whether that proof succeeds or fails, the
+handler exits before endpoint removal, disconnect hotplug, DNS flushing, or
+other destructive generic tracker recovery.
+
+### Bounded CID-exhaustion recovery
+
+Repeated path loss can temporarily exhaust xquic's peer connection-ID pool.
+The first `XQC_EMP_NO_AVAIL_PATH_ID` is still treated as transient because the
+peer may replenish IDs. Previously, however, an attached path in
+`CLOSED_RECOVERABLE` retried forever every three seconds without incrementing
+any recovery budget.
+
+MQVPN now counts consecutive manual reactivation failures. At five failures it
+performs one connection refresh through a different path that is already
+validated. It never chooses the failed path for that refresh and cannot loop:
+the per-path latch remains set across reconnect and clears only after the path
+validates again. Without a validated sibling, the existing connection is left
+untouched.
+
+### Failover validation and the zero-loss tradeoff
+
+A controlled test blocked only the primary path's MQVPN UDP traffic for 15
+seconds while sending one tunneled ICMP packet per second. The MQVPN connection
+remained established, the secondary path continued carrying traffic, and both
+paths were active after recovery. Of 28 probes, 26 arrived; the two packets
+already scheduled onto the failed path were lost at the handoff.
+
+That is session continuity, not packet duplication. MQVPN's `redundant`
+scheduler (or datagram reinjection) can send every packet on both paths and
+remove this particular loss window, but it doubles cellular usage, gives up
+bandwidth aggregation, and limits useful throughput toward the slower path.
+For a general-purpose asymmetric Starlink/cellular connection, `wlb` plus the
+bounded recovery above is the selected default. A workload requiring literal
+zero packet loss must explicitly accept the duplication cost or use FEC when a
+compatible build is available at both ends.
+
 The upgrade must also migrate the old local scheduler policy. `backup` is not a
 supported MQVPN 0.14.1 scheduler; upstream supports `wlb`, `wlb_udp_pin`,
 `minrtt`, and experimental `backup_fec`. Preserving `scheduler=backup` plus

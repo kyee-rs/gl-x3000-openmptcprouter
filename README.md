@@ -21,7 +21,7 @@ A separate development profile proved that the built-in modem can carry
 bidirectional PCIe/MBIM traffic. That experimental channel table is documented
 for research context but intentionally excluded from this build kit.
 
-The build carries eighteen narrowly scoped integration fixes:
+The build carries twenty narrowly scoped integration fixes:
 
 1. Match PCI ID `17cb:0308`, subsystem `17cb:5201`, to the existing upstream
    `mhi_quectel_rm5xx_info` profile. This exposes `MBIM` control and
@@ -66,6 +66,14 @@ The build carries eighteen narrowly scoped integration fixes:
 18. Migrate the unsupported legacy MQVPN `backup` scheduler and split
     primary/backup path lists to upstream `wlb` with both configured WANs
     active, so a Starlink black hole can immediately use cellular.
+19. Treat explicit MQVPN paths as transport-owned in `002-error`. A tracker
+    miss may move the VPS host route only after the sibling path passes a
+    source-bound reachability probe; a dead administrative backup is never
+    selected and the current transport is never torn down.
+20. Bound MQVPN's manual path-reactivation loop. Five consecutive CID/path
+    creation failures trigger one connection refresh through an already
+    validated sibling, and another refresh is blocked until the failed path
+    validates again.
 
 No experimental hybrid channel table or `no_m3` profile is included.
 

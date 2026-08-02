@@ -71,6 +71,64 @@ EOF
     rm -rf "$test_dir"
 }
 
+test_dead_mqvpn_backup_not_selected() {
+    local hook="$1"
+    local test_dir
+    test_dir="$(mktemp -d /tmp/mqvpn-dead-backup.XXXXXX)"
+    mkdir -p "$test_dir/bin" "$test_dir/lib"
+
+    cat >"$test_dir/lib/common-post-tracking.sh" <<'EOF'
+_log() { :; }
+EOF
+    cat >"$test_dir/bin/ifstatus" <<'EOF'
+#!/bin/sh
+printf '{"up":true}\n'
+EOF
+    cat >"$test_dir/bin/jsonfilter" <<'EOF'
+#!/bin/sh
+printf 'true\n'
+EOF
+    cat >"$test_dir/bin/uci" <<'EOF'
+#!/bin/sh
+case "$3" in
+    mqvpn.settings.enable) printf '1\n' ;;
+    mqvpn.multipath.auto_wan) printf '0\n' ;;
+    mqvpn.multipath.path) printf 'eth0 wwan0\n' ;;
+    mqvpn.server.ip) printf '198.51.100.10\n' ;;
+    *) exit 1 ;;
+esac
+EOF
+    cat >"$test_dir/bin/ip" <<'EOF'
+#!/bin/sh
+printf '%s\n' "$*" >>"$MQVPN_TEST_CALLS"
+case "$*" in
+    '-4 route show default dev wwan0')
+        printf 'default via 198.51.100.1 dev wwan0 metric 5\n'
+        ;;
+esac
+EOF
+    cat >"$test_dir/bin/ping" <<'EOF'
+#!/bin/sh
+exit 1
+EOF
+    chmod +x "$test_dir/bin/ifstatus" "$test_dir/bin/jsonfilter" \
+        "$test_dir/bin/uci" "$test_dir/bin/ip" "$test_dir/bin/ping"
+
+    PATH="$test_dir/bin:$PATH" \
+        MQVPN_TEST_CALLS="$test_dir/calls" \
+        OMR_LIB_DIR="$test_dir/lib" \
+        OMR_TRACKER_STATUS=ERROR \
+        OMR_TRACKER_PREV_STATUS=OK \
+        OMR_TRACKER_DEVICE=eth0 \
+        OMR_TRACKER_INTERFACE=wan1 \
+        /bin/sh "$hook"
+
+    if grep -Fq 'route replace' "$test_dir/calls"; then
+        fail "tracker redirected the VPS route through an unreachable backup: $hook"
+    fi
+    rm -rf "$test_dir"
+}
+
 require_string() {
     local file="$1"
     local expected="$2"
@@ -122,6 +180,7 @@ readonly BBR_PATCH="$OMR_DIR/6.18/target/linux/generic/hack-6.18/999-tcp_bbr-v3-
 readonly DTS_SOURCE="$OMR_DIR/6.18/target/linux/mediatek/dts/mt7981a-glinet-gl-x3000.dts"
 readonly MM_MHI_PATCH="$OMR_FEED_DIR/modemmanager/patches/010-broadband-modem-mbim-handle-mhi-pci-generic.patch"
 readonly MM_QDU_PATCH="$OMR_FEED_DIR/modemmanager/patches/011-quectel-disable-at-over-mbim-on-wwan.patch"
+readonly MQVPN_RECOVERY_PATCH="$OMR_FEED_DIR/mqvpn/patches/023-bounded-reactivate-reconnect.patch"
 readonly OWNER_GUARD="$OMR_DIR/common/package/base-files/files/etc/uci-defaults/99-cellular-control-owner"
 readonly FW4_COMPAT="$OMR_DIR/common/package/base-files/files/etc/uci-defaults/99-fw4-videochat-compat"
 readonly MPTCP_SYNC="$OMR_DIR/common/package/base-files/files/etc/hotplug.d/iface/31-mptcp-modemmanager-endpoint-sync"
@@ -137,6 +196,7 @@ require_file "$BBR_PATCH"
 require_file "$DTS_SOURCE"
 require_file "$MM_MHI_PATCH"
 require_file "$MM_QDU_PATCH"
+require_file "$MQVPN_RECOVERY_PATCH"
 require_file "$OWNER_GUARD"
 require_file "$FW4_COMPAT"
 require_file "$MPTCP_SYNC"
@@ -161,6 +221,8 @@ cmp -s "$MM_MHI_PATCH" "$KIT_DIR/patches/modemmanager/010-broadband-modem-mbim-h
     || fail 'ModemManager MHI patch differs from the audited build-kit copy'
 cmp -s "$MM_QDU_PATCH" "$KIT_DIR/patches/modemmanager/011-quectel-disable-at-over-mbim-on-wwan.patch" \
     || fail 'ModemManager WWAN QDU patch differs from the audited build-kit copy'
+cmp -s "$MQVPN_RECOVERY_PATCH" "$KIT_DIR/patches/mqvpn/023-bounded-reactivate-reconnect.patch" \
+    || fail 'MQVPN bounded recovery patch differs from the audited build-kit copy'
 cmp -s "$MQVPN_MAKEFILE" "$KIT_DIR/overlays/openmptcprouter-feed/mqvpn/Makefile" \
     || fail 'MQVPN recipe differs from the audited build-kit copy'
 cmp -s "$MQVPN_INIT" "$KIT_DIR/overlays/openmptcprouter-feed/mqvpn/files/etc/init.d/mqvpn" \
@@ -195,8 +257,8 @@ grep -Fqx "PKG_SOURCE_VERSION:=$MQVPN_SOURCE_COMMIT" "$MQVPN_MAKEFILE" \
     || fail 'MQVPN package source revision is not the audited commit'
 grep -Fqx 'PKG_VERSION:=0.14.1' "$MQVPN_MAKEFILE" \
     || fail 'MQVPN package is not the selected 0.14.1 release'
-grep -Fqx 'PKG_RELEASE:=6' "$MQVPN_MAKEFILE" \
-    || fail 'MQVPN package release was not bumped for the optimized pinned build'
+grep -Fqx 'PKG_RELEASE:=7' "$MQVPN_MAKEFILE" \
+    || fail 'MQVPN package release was not bumped for bounded path recovery'
 grep -Fq 'DEPENDS:=+kmod-tun +libevent2 +libstdcpp' "$MQVPN_MAKEFILE" \
     || fail 'MQVPN package does not declare its libstdc++ runtime dependency'
 grep -Fqx "BSSL_COMMIT:=$MQVPN_BORINGSSL_COMMIT" "$MQVPN_MAKEFILE" \
@@ -216,6 +278,7 @@ if grep -Fq 'Only act on status transitions to avoid spamming the API on every p
     fail 'MQVPN path hook still skips healthy-state reconciliation'
 fi
 test_explicit_mqvpn_error_noop "$MQVPN_PATH_HOOK"
+test_dead_mqvpn_backup_not_selected "$TRACKER_ERROR"
 grep -Fq 'https://packages.openmptcprouter.com/${OMR_RELEASE}-${OMR_KERNEL}/${OMR_REAL_TARGET}/luci/packages.adb' "$OMR_DIR/build.sh" \
     || fail 'OMR build script lacks versioned HTTPS APK feeds'
 
@@ -260,6 +323,10 @@ mapfile -t mqvpn_build_dirs < <(find "$SOURCE_ROOT/build_dir" -type d \
 [[ "${#mqvpn_build_dirs[@]}" -gt 0 ]] || fail 'MQVPN build directory not found'
 
 readonly mqvpn_build_dir="${mqvpn_build_dirs[0]}"
+grep -Fq 'reactivation failed %u times' "$mqvpn_build_dir/src/mqvpn_client.c" \
+    || fail 'MQVPN source lacks bounded manual-reactivation recovery'
+grep -Fq 'MQVPN_PATH_REACTIVATE_RECONNECT_THRESHOLD 5' "$mqvpn_build_dir/src/path_error_policy.h" \
+    || fail 'MQVPN source lacks the audited reactivation threshold'
 readonly mqvpn_bssl_dir="$mqvpn_build_dir/third_party/xquic/third_party/boringssl"
 if [[ -d "$mqvpn_bssl_dir/.git" ]]; then
     check_revision "$mqvpn_bssl_dir" "$MQVPN_BORINGSSL_COMMIT" BoringSSL
@@ -273,10 +340,11 @@ mapfile -t mqvpn_binaries < <(find "$SOURCE_ROOT/build_dir" -type f \
     -path '*/root-mediatek/usr/sbin/mqvpn' -print | sort)
 [[ "${#mqvpn_binaries[@]}" -gt 0 ]] || fail 'installed MQVPN binary not found'
 require_substring "${mqvpn_binaries[0]}" 'mqvpn %s'
+require_substring "${mqvpn_binaries[0]}" 'reconnecting once through validated sibling'
 
 mapfile -t mqvpn_packages < <(find "$SOURCE_ROOT/bin/packages" -type f \
-    -name 'mqvpn-0.14.1-r6.apk' -print | sort)
-[[ "${#mqvpn_packages[@]}" -gt 0 ]] || fail 'MQVPN 0.14.1-r6 APK not found'
+    -name 'mqvpn-0.14.1-r7.apk' -print | sort)
+[[ "${#mqvpn_packages[@]}" -gt 0 ]] || fail 'MQVPN 0.14.1-r7 APK not found'
 
 readonly TARGET_BIN_DIR="$SOURCE_ROOT/bin/targets/mediatek/filogic"
 mapfile -t images < <(find "$TARGET_BIN_DIR" -maxdepth 1 -type f \
@@ -348,6 +416,7 @@ if grep -Fq 'Only act on status transitions to avoid spamming the API on every p
     fail 'installed MQVPN path hook still skips healthy-state reconciliation'
 fi
 test_explicit_mqvpn_error_noop "$installed_mqvpn_path_hook"
+test_dead_mqvpn_backup_not_selected "$installed_tracker_error"
 
 printf 'OMR=%s\n' "$OMR_COMMIT"
 printf 'OMR_FEED=%s\n' "$OMR_FEED_COMMIT"
