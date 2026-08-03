@@ -1,0 +1,113 @@
+diff --git a/third_party/xquic/src/transport/scheduler/xqc_scheduler_redundant.c b/third_party/xquic/src/transport/scheduler/xqc_scheduler_redundant.c
+--- a/third_party/xquic/src/transport/scheduler/xqc_scheduler_redundant.c
++++ b/third_party/xquic/src/transport/scheduler/xqc_scheduler_redundant.c
+@@ -75,6 +75,16 @@ xqc_redundant_scheduler_duplicate_to_path(xqc_connection_t *conn,
+     xqc_packet_out_t *packet_out, xqc_path_ctx_t *path)
+ {
+     xqc_send_queue_t *send_queue = conn->conn_send_queue;
++    uint64_t non_ack_frames = packet_out->po_frame_types
++        & ~(XQC_FRAME_BIT_ACK | XQC_FRAME_BIT_ACK_MP);
++
++    /* ACK and ACK_MP are path-specific and are removed from replicas below.
++     * Do not allocate a replica when that would leave only a QUIC header: the
++     * peer correctly treats a packet containing no frame as a protocol
++     * violation and closes the entire connection. */
++    if (non_ack_frames == 0) {
++        return;
++    }
+ 
+     xqc_packet_out_t *po_copy = xqc_packet_out_get(send_queue);
+     if (po_copy == NULL) {
+diff --git a/third_party/xquic/tests/CMakeLists.txt b/third_party/xquic/tests/CMakeLists.txt
+--- a/third_party/xquic/tests/CMakeLists.txt
++++ b/third_party/xquic/tests/CMakeLists.txt
+@@ -183,6 +183,19 @@ if(HAVE_CUNIT)
+     target_link_libraries(run_tests
+         ${CUTEST_DEPEND_LIBS}
+     )
++
++    add_executable(run_redundant_tests
++        ${UNIT_TEST_DIR}/xqc_redundant_test_main.c
++        ${UNIT_TEST_DIR}/xqc_redundant_test.c)
++    target_include_directories(run_redundant_tests
++        PRIVATE
++        ${INCLUDE_DIRECTORIES}
++        ${CUNIT_INCLUDE_DIRS})
++    target_link_libraries(run_redundant_tests
++        ${CUTEST_DEPEND_LIBS})
++    add_test(NAME run_redundant_tests COMMAND run_redundant_tests)
++    set_tests_properties(run_redundant_tests PROPERTIES
++        WORKING_DIRECTORY ${CMAKE_BINARY_DIR})
+ 
+     add_test(NAME run_tests COMMAND run_tests)
+     set_tests_properties(run_tests PROPERTIES
+diff --git a/third_party/xquic/tests/unittest/xqc_redundant_test.c b/third_party/xquic/tests/unittest/xqc_redundant_test.c
+--- a/third_party/xquic/tests/unittest/xqc_redundant_test.c
++++ b/third_party/xquic/tests/unittest/xqc_redundant_test.c
+@@ -220,6 +220,30 @@ xqc_test_redundant_two_paths_primary_and_replica(void)
+ }
+ 
+ void
++xqc_test_redundant_ack_only_packet_gets_no_empty_replica(void)
++{
++    redundant_test_fixture_t f;
++    redundant_test_setup(&f);
++
++    xqc_path_ctx_t *p0 = redundant_test_add_path(&f, 0, 5000, 64 * 1024, 0);
++    xqc_path_ctx_t *p1 = redundant_test_add_path(&f, 1, 20000, 64 * 1024, 0);
++
++    xqc_packet_out_t *po = redundant_test_make_packet_out(&f, 21);
++    po->po_frame_types = XQC_FRAME_BIT_ACK_MP;
++    po->po_ack_offset = 13;
++
++    uint64_t sel = redundant_test_invoke_ex(&f, po, 0, NULL);
++    CU_ASSERT_EQUAL(sel, 0);
++    CU_ASSERT_EQUAL(redundant_test_list_len(
++        &p0->path_schedule_buf[XQC_SEND_TYPE_NORMAL]), 0);
++    CU_ASSERT_EQUAL(redundant_test_list_len(
++        &p1->path_schedule_buf[XQC_SEND_TYPE_NORMAL]), 0);
++    CU_ASSERT_EQUAL(po->po_origin_ref_cnt, 0);
++
++    redundant_test_teardown(&f);
++}
++
++void
+ xqc_test_redundant_three_paths_replicate_to_all_others(void)
+ {
+     redundant_test_fixture_t f;
+diff --git a/third_party/xquic/tests/unittest/xqc_redundant_test.h b/third_party/xquic/tests/unittest/xqc_redundant_test.h
+--- a/third_party/xquic/tests/unittest/xqc_redundant_test.h
++++ b/third_party/xquic/tests/unittest/xqc_redundant_test.h
+@@ -17,6 +17,10 @@
+  * NORMAL schedule buffer, linked to the original via po_origin. */
+ void xqc_test_redundant_two_paths_primary_and_replica(void);
+ 
++/* An ACK-only packet still selects its primary path, but must not create a
++ * replica because ACK stripping would leave an invalid packet with no frame. */
++void xqc_test_redundant_ack_only_packet_gets_no_empty_replica(void);
++
+ /* With three usable paths, one is returned as primary and each of the
+  * other two receives its own replica. */
+ void xqc_test_redundant_three_paths_replicate_to_all_others(void);
+diff --git a/third_party/xquic/tests/unittest/xqc_redundant_test_main.c b/third_party/xquic/tests/unittest/xqc_redundant_test_main.c
+--- a/third_party/xquic/tests/unittest/xqc_redundant_test_main.c
++++ b/third_party/xquic/tests/unittest/xqc_redundant_test_main.c
+@@ -30,6 +30,8 @@ main(void)
+ 
+     if (NULL == CU_add_test(s, "two_paths_primary_and_replica",
+                             xqc_test_redundant_two_paths_primary_and_replica)
++        || NULL == CU_add_test(s, "ack_only_packet_gets_no_empty_replica",
++                               xqc_test_redundant_ack_only_packet_gets_no_empty_replica)
+         || NULL == CU_add_test(s, "three_paths_replicate_to_all_others",
+                                xqc_test_redundant_three_paths_replicate_to_all_others)
+         || NULL == CU_add_test(s, "cwnd_blocked_path_gets_no_replica",
+diff --git a/third_party/xquic/tests/unittest/main.c b/third_party/xquic/tests/unittest/main.c
+--- a/third_party/xquic/tests/unittest/main.c
++++ b/third_party/xquic/tests/unittest/main.c
+@@ -329,5 +329,6 @@ int main(int argc, char **argv)
+         || !CU_add_test(pSuite, "xqc_test_wrr_path_removed_no_crash", xqc_test_wrr_path_removed_no_crash)
+         || !CU_add_test(pSuite, "xqc_test_redundant_two_paths_primary_and_replica", xqc_test_redundant_two_paths_primary_and_replica)
++        || !CU_add_test(pSuite, "xqc_test_redundant_ack_only_packet_gets_no_empty_replica", xqc_test_redundant_ack_only_packet_gets_no_empty_replica)
+         || !CU_add_test(pSuite, "xqc_test_redundant_three_paths_replicate_to_all_others", xqc_test_redundant_three_paths_replicate_to_all_others)
+         || !CU_add_test(pSuite, "xqc_test_redundant_cwnd_blocked_path_gets_no_replica", xqc_test_redundant_cwnd_blocked_path_gets_no_replica)
+         || !CU_add_test(pSuite, "xqc_test_redundant_frozen_path_excluded", xqc_test_redundant_frozen_path_excluded)

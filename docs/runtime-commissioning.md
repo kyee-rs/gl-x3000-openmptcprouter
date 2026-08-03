@@ -102,17 +102,24 @@ For the tested GL-X3000 configuration, use explicit paths in stable order:
 ```uci
 config multipath 'multipath'
         option auto_wan '0'
-        option scheduler 'wlb'
+        option scheduler 'redundant'
+        option reinjection_control '0'
+        option reinjection_mode 'default'
         list path 'eth0'
         list path 'wwan0'
 ```
 
-This gives MQVPN a stable, explicit inventory and uses the scheduler recommended
-upstream for general multipath and asymmetric links. MQVPN 0.14.1 does not
+This gives MQVPN a stable, explicit inventory and sends each tunnel packet over
+both WANs. MQVPN 0.14.1 does not
 support `backup` as a scheduler name. Do not preserve the old combination of
 `scheduler=backup`, `primary_path`, and `backup_path`: it can leave cellular
 registered without scheduling tunnel datagrams onto it during a Starlink black
-hole. The build's UCI default migrates that legacy shape to active WLB paths.
+hole. The build's UCI default migrates that legacy shape to redundant paths.
+
+Redundant mode trades aggregation and roughly doubles WAN traffic for immediate
+silent-loss coverage. Do not enable separate datagram reinjection with it. The
+pinned xquic revision includes the redundant-scheduler replica-cleanup fix, and
+both directions must still pass the controlled loss gates below.
 
 Use a temporary packet black hole or a real link event for WAN-failure tests;
 the connection must remain established and the failed path should move through

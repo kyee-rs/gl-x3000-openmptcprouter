@@ -1,0 +1,16 @@
+diff --git a/third_party/xquic/src/transport/xqc_timer.c b/third_party/xquic/src/transport/xqc_timer.c
+--- a/third_party/xquic/src/transport/xqc_timer.c
++++ b/third_party/xquic/src/transport/xqc_timer.c
+@@ -92,7 +92,11 @@ xqc_timer_loss_detection_timeout(xqc_timer_type_t type, xqc_usec_t now, void *u
+     } else {
+         /* assert(!PeerCompletedAddressValidation()) */
+         if (xqc_conn_peer_complete_address_validation(conn)) {
+-            xqc_log(conn->log, XQC_LOG_WARN, "|exception|peer validated address while inflight bytes is 0|");
++            /*
++             * A fully acknowledged flight can leave a stale loss timer. This
++             * is diagnostic only and must not flood production syslog.
++             */
++            xqc_log(conn->log, XQC_LOG_DEBUG, "|peer validated address while inflight bytes is 0|");
+             return;
+         }
+ 

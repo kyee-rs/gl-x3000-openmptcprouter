@@ -16,6 +16,30 @@ Before flashing any development image:
 
 A configuration-preserving sysupgrade is not the same as a factory reset. Even so, a new kernel/network stack can make a preserved configuration incompatible, so both preserved-config and clean-config recovery plans are required.
 
+### OMR exclusive-backup default
+
+The pinned OMR snapshot sets `CONF_EXCLUSIVE=1` in `/sbin/sysupgrade`. A plain
+`sysupgrade -b` therefore archives only paths explicitly listed in
+`/etc/sysupgrade.conf`; with the stock empty file it fails with `tar: empty
+archive`. This is an OMR policy difference, not evidence that no configuration
+exists.
+
+Use the snapshot's `-e` switch to restore normal OpenWrt keep-list and changed-
+conffile behavior, and validate the file list before trusting the archive:
+
+```sh
+sysupgrade -e -l > /tmp/sysupgrade-backup.list
+grep -qx /etc/config/network /tmp/sysupgrade-backup.list
+grep -qx /etc/config/openmptcprouter /tmp/sysupgrade-backup.list
+sysupgrade -e -b /tmp/router-config.tar.gz
+gzip -t /tmp/router-config.tar.gz
+tar -tzf /tmp/router-config.tar.gz >/dev/null
+```
+
+For a recovery-grade snapshot, also archive the writable overlay while the
+router is quiescent. Keep both archives private: they can contain password
+hashes, VPN keys, certificates, carrier configuration, and subscriber data.
+
 ## Artifact validation before flash
 
 Capture these in the release metadata:
@@ -34,6 +58,10 @@ Also verify:
 - package signatures are valid under the image's trust policy; and
 - ModemManager is release r6 and its binary contains both `mhi-pci-generic`
   and `AT over MBIM disabled on WWAN port`; and
+- MQVPN is release r10, the clean-install config selects `redundant`, the
+  runtime config is mode `0600`, and separate reinjection is disabled; and
+- the redundant-scheduler unit test confirms ACK-only packets create no empty
+  replicas, and repeated path-removal E2E tests retain one H3 connection; and
 - a secret scan finds no credentials, private keys, tokens, private endpoints, subscriber identifiers, or factory data.
 
 ## Post-boot acceptance gates
@@ -59,6 +87,11 @@ not only the image:
 The included first-boot guard disables ModemManager when any restored interface
 uses `proto=mbim`. It intentionally does not rewrite package feeds or enable a
 previously disabled service, so those effective-state checks remain explicit.
+
+Also verify the effective MQVPN configuration after a retained-config upgrade.
+The package's clean-install defaults do not override an explicit preserved UCI
+choice. For the continuity profile, both router and server must use
+`scheduler=redundant` and must have separate reinjection disabled.
 
 ### Gate 1: early boot and PCIe
 

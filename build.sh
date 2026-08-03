@@ -119,13 +119,34 @@ apply_patch_exact \
 apply_patch_exact \
     "$OMR_FEED_DIR" \
     "$KIT_DIR/patches/openmptcprouter-feed/0003-guard-mqvpn-transport-failover.patch"
+apply_patch_exact \
+    "$OMR_FEED_DIR" \
+    "$KIT_DIR/patches/openmptcprouter-feed/0004-guard-dns-recovery-heuristics.patch"
+apply_patch_exact \
+    "$OMR_FEED_DIR" \
+    "$KIT_DIR/patches/openmptcprouter-feed/0005-mqvpn-continuity-defaults.patch"
+apply_patch_exact \
+    "$OMR_FEED_DIR" \
+    "$KIT_DIR/patches/openmptcprouter-feed/0006-relax-tracker-default-cadence.patch"
 
 install_tree \
     "$KIT_DIR/overlays/openmptcprouter-feed/mqvpn" \
     "$OMR_FEED_DIR/mqvpn"
 install_file \
-    "$KIT_DIR/patches/mqvpn/023-bounded-reactivate-reconnect.patch" \
-    "$OMR_FEED_DIR/mqvpn/patches/023-bounded-reactivate-reconnect.patch"
+    "$KIT_DIR/patches/mqvpn/021-path-removal-continuity-test.patch" \
+    "$OMR_FEED_DIR/mqvpn/patches/021-path-removal-continuity-test.patch"
+install_file \
+    "$KIT_DIR/patches/mqvpn/024-preserve-live-connection-on-path-failure.patch" \
+    "$OMR_FEED_DIR/mqvpn/patches/024-preserve-live-connection-on-path-failure.patch"
+install_file \
+    "$KIT_DIR/patches/mqvpn/025-path-scoped-hard-send-errors.patch" \
+    "$OMR_FEED_DIR/mqvpn/patches/025-path-scoped-hard-send-errors.patch"
+install_file \
+    "$KIT_DIR/patches/mqvpn/026-demote-zero-inflight-timer-noise.patch" \
+    "$OMR_FEED_DIR/mqvpn/patches/026-demote-zero-inflight-timer-noise.patch"
+install_file \
+    "$KIT_DIR/patches/mqvpn/028-skip-empty-redundant-replicas.patch" \
+    "$OMR_FEED_DIR/mqvpn/patches/028-skip-empty-redundant-replicas.patch"
 
 install_file \
     "$KIT_DIR/config/config-gl-x3000" \

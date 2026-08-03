@@ -9,7 +9,7 @@ include $(TOPDIR)/rules.mk
 
 PKG_NAME:=mqvpn
 PKG_VERSION:=0.14.1
-PKG_RELEASE:=7
+PKG_RELEASE:=10
 PKG_LICENSE:=Apache-2.0
 PKG_LICENSE_FILES:=LICENSE
 
@@ -149,7 +149,9 @@ endef
 define Package/mqvpn/install
 	$(INSTALL_DIR) $(1)/usr/sbin
 	$(INSTALL_BIN) $(MQVPN_BUILD)/mqvpn $(1)/usr/sbin/mqvpn
-	$(CP) ./files/* $(1)/
+	$(CP) ./files/etc $(1)/
+	$(INSTALL_DIR) $(1)/usr/bin
+	$(INSTALL_BIN) ./files/usr/bin/mqvpn-path $(1)/usr/bin/mqvpn-path
 endef
 
 $(eval $(call BuildPackage,mqvpn))

@@ -1,0 +1,24 @@
+diff --git a/omr-tracker/Makefile b/omr-tracker/Makefile
+--- a/omr-tracker/Makefile
++++ b/omr-tracker/Makefile
+@@ -10,7 +10,7 @@ include $(TOPDIR)/rules.mk
+ 
+ PKG_NAME:=omr-tracker
+ PKG_VERSION:=2.0
+-PKG_RELEASE:=1
++PKG_RELEASE:=2
+ 
+ include $(INCLUDE_DIR)/package.mk
+ 
+diff --git a/omr-tracker/files/etc/config/omr-tracker b/omr-tracker/files/etc/config/omr-tracker
+--- a/omr-tracker/files/etc/config/omr-tracker
++++ b/omr-tracker/files/etc/config/omr-tracker
+@@ -4,7 +4,7 @@ config defaults 'defaults'
+ 	option timeout '2'
+ 	option count '2'
+ 	option tries '3'
+-	option interval '2'
++	option interval '5'
+ 	option interval_tries '1'
+ 	option type 'ping'
+ 	option wait_test '0'

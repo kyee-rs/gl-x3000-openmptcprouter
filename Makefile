@@ -41,6 +41,9 @@ validate: image
 
 lint:
 	bash -n build.sh validate.sh scripts/public-release-preflight.sh
+	sh -n scripts/live-mqvpn-failover-test.sh
+	sh -n scripts/live-mqvpn-hard-error-test.sh
+	sh -n scripts/live-mqvpn-soak-test.sh
 	sh -n overlays/openmptcprouter/common/package/base-files/files/etc/uci-defaults/99-cellular-control-owner
 	sh -n overlays/openmptcprouter/common/package/base-files/files/etc/uci-defaults/99-fw4-videochat-compat
 	sh -n overlays/openmptcprouter/common/package/base-files/files/etc/hotplug.d/iface/31-mptcp-modemmanager-endpoint-sync
@@ -56,7 +59,14 @@ lint:
 	git apply --numstat < patches/openmptcprouter-feed/0001-modemmanager-bump-release.patch
 	git apply --numstat < patches/openmptcprouter-feed/0002-mqvpn-path-reconciliation.patch
 	git apply --numstat < patches/openmptcprouter-feed/0003-guard-mqvpn-transport-failover.patch
-	git apply --numstat < patches/mqvpn/023-bounded-reactivate-reconnect.patch
+	git apply --numstat < patches/openmptcprouter-feed/0004-guard-dns-recovery-heuristics.patch
+	git apply --numstat < patches/openmptcprouter-feed/0005-mqvpn-continuity-defaults.patch
+	git apply --numstat < patches/openmptcprouter-feed/0006-relax-tracker-default-cadence.patch
+	git apply --numstat < patches/mqvpn/021-path-removal-continuity-test.patch
+	git apply --numstat < patches/mqvpn/024-preserve-live-connection-on-path-failure.patch
+	git apply --numstat < patches/mqvpn/025-path-scoped-hard-send-errors.patch
+	git apply --numstat < patches/mqvpn/026-demote-zero-inflight-timer-noise.patch
+	git apply --numstat < patches/mqvpn/028-skip-empty-redundant-replicas.patch
 
 preflight: lint
 	scripts/public-release-preflight.sh
