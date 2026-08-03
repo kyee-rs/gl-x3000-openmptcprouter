@@ -19,6 +19,7 @@ Primary and closely related public sources used for this research:
 - MQVPN selected multipath scheduler documentation: [`multipath.md`](https://github.com/Ysurac/mqvpn/blob/e6fcf7e6943d98d465155e27eb5279ac082051de/website/guide/multipath.md)
 - MQVPN selected xquic revision: [`7ea9344d`](https://github.com/Ysurac/xquic/tree/7ea9344dba9c1fbbc0ae9a2a948ed1011689ab96)
 - IETF Multipath QUIC path management: [`draft-ietf-quic-multipath-21`](https://datatracker.ietf.org/doc/html/draft-ietf-quic-multipath-21)
+- IETF QUIC packet/frame requirement and protocol errors: [RFC 9000, section 12.4](https://www.rfc-editor.org/rfc/rfc9000.html#section-12.4)
 
 ## Attribution policy
 

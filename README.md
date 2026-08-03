@@ -14,14 +14,17 @@ kernel topology, package contents, and the ModemManager patches. The preferred
 kernel combination—upstream Quectel RM5xx profile plus early PCIe port-PM
 disable—has booted on real hardware with stable MHI/MBIM enumeration. The
 ModemManager r6 package has also passed live discovery and persistence testing.
-Reset, repeated cold boot, sustained RX/TX, reconnect, and multi-WAN validation
-are still required before this should be called stable.
+The MQVPN r10 pair has passed live bidirectional traffic, single-WAN silent and
+hard-error injection, and repeated path-removal testing. Repeated cold boots,
+factory-reset commissioning, carrier-side address churn over days, and a
+long-duration production soak are still required before this should be called
+stable.
 
 A separate development profile proved that the built-in modem can carry
 bidirectional PCIe/MBIM traffic. That experimental channel table is documented
 for research context but intentionally excluded from this build kit.
 
-The build carries eighteen narrowly scoped integration fixes:
+The build carries twenty-five narrowly scoped integration fixes:
 
 1. Match PCI ID `17cb:0308`, subsystem `17cb:5201`, to the existing upstream
    `mhi_quectel_rm5xx_info` profile. This exposes `MBIM` control and
@@ -64,8 +67,34 @@ The build carries eighteen narrowly scoped integration fixes:
     compile it as `Release`, and declare the new binary's `libstdcpp` runtime
     dependency.
 18. Migrate the unsupported legacy MQVPN `backup` scheduler and split
-    primary/backup path lists to upstream `wlb` with both configured WANs
-    active, so a Starlink black hole can immediately use cellular.
+    primary/backup path lists to `redundant` with both configured WANs active.
+    Every tunnel packet is sent on both paths so a silent black hole does not
+    wait for tracker or QUIC loss detection.
+19. Treat explicit MQVPN paths as transport-owned in `002-error`. A tracker
+    miss may move the VPS host route only after the sibling path passes a
+    source-bound reachability probe; a dead administrative backup is never
+    selected and the current transport is never torn down.
+20. Make MQVPN path recovery subordinate to tunnel continuity. Administrative
+    removal, CID/path-budget exhaustion, and failed secondary recovery cannot
+    close the shared connection while a validated sibling remains. Automatic
+    reactivation is quarantined after five failures, and removal of the final
+    validated path is refused.
+21. Return hard local UDP send errors to xquic as path-scoped failures instead
+    of disguising them as `EAGAIN`, which previously caused an immediate retry
+    storm that could starve the surviving path.
+22. Disable OMR's single-probe DNS restart and resolver-switch heuristics by
+    default. Missing resolver processes still recover, while the legacy noisy
+    heuristics require explicit opt-in.
+23. Demote xquic's acknowledged zero-inflight loss-timer diagnostic from WARN
+    to DEBUG. The branch does not alter transport state, and logging it for
+    normal completed flights only wastes CPU and floods both endpoint logs.
+24. Raise the clean-install tracker cadence from two to five seconds. Redundant
+    MQVPN provides immediate data-plane coverage, while the slower tracker
+    avoids shell-probe CPU bursts and transient administrative path flapping.
+25. Prevent the redundant scheduler from copying ACK-only packets. Stripping
+    the path-specific ACK from such a copy previously emitted an empty QUIC
+    packet, causing an intermittent peer `PROTOCOL_VIOLATION` and full-tunnel
+    reconnect during administrative path removal.
 
 No experimental hybrid channel table or `no_m3` profile is included.
 

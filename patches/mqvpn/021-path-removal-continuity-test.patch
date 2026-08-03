@@ -116,7 +116,7 @@ index 405e6a5..8e628ed 100755
  if ! ctrl_ok '{"cmd":"remove_path","iface":"veth-a0"}'; then
      echo "FAIL: remove_path command rejected"
      dump_logs; exit 1
-@@ -332,47 +357,72 @@ if ! wait_for_log "${WORK_DIR}/client.log" "path removed.*veth-a0" 10; then
+@@ -332,47 +357,73 @@ if ! wait_for_log "${WORK_DIR}/client.log" "path removed.*veth-a0" 10; then
  fi
  echo "OK: path A removed"
  
@@ -161,7 +161,8 @@ index 405e6a5..8e628ed 100755
 +H3_READY_AFTER=$(grep -c "tunnel 200 OK" "${WORK_DIR}/client.log" || true)
 +FIRST_SEQ=$(sed -n 's/.*icmp_seq=\([0-9][0-9]*\).*/\1/p' "$CONTINUITY_LOG" | head -1)
 +LAST_SEQ=$(sed -n 's/.*icmp_seq=\([0-9][0-9]*\).*/\1/p' "$CONTINUITY_LOG" | tail -1)
-+RECEIVED=$(grep -c "icmp_seq=" "$CONTINUITY_LOG" || true)
++RECEIVED=$(sed -n 's/.*icmp_seq=\([0-9][0-9]*\).*/\1/p' "$CONTINUITY_LOG" |
++    sort -n -u | wc -l)
 +
 +if [ -z "$FIRST_SEQ" ] || [ -z "$LAST_SEQ" ] || [ "$RECEIVED" -lt 80 ]; then
 +    echo "FAIL: insufficient sustained tunnel traffic during path removal"
@@ -216,7 +217,7 @@ index 405e6a5..8e628ed 100755
  
  # ── Phase 4: test list_paths control API command ──────────────────────────
  
-@@ -390,14 +440,12 @@ if ! echo "$LIST_RESP" | grep -q '"paths"'; then
+@@ -390,14 +441,12 @@ if ! echo "$LIST_RESP" | grep -q '"paths"'; then
      echo "FAIL: list_paths response missing paths field: $LIST_RESP"
      dump_logs; exit 1
  fi
@@ -236,7 +237,7 @@ index 405e6a5..8e628ed 100755
  
  # Verify list_paths is array format with proper JSON
  if ! echo "$LIST_RESP" | grep -qE '"paths":\s*\[[^]]*\]'; then
-@@ -415,6 +463,7 @@ echo "================================================================"
+@@ -415,6 +464,7 @@ echo "================================================================"
  echo "  All tests PASSED"
  echo "  Phase 1: single-path tunnel established on path A"
  echo "  Phase 2: paths B/C activated via API (Bug 1 + #4273 verified)"

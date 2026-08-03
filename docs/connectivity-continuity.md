@@ -96,13 +96,85 @@ they are no longer applied to firmware.
 The tracker guard remains useful defense in depth and preserves clear ownership:
 status probes still should not mutate an explicitly configured MQVPN path list.
 
+### Dead-backup route guard
+
+The tracker integration also used administrative `ifstatus up=true` as proof
+that the sibling WAN could carry the VPS route. A modem can remain
+administratively connected while its data plane is a black hole. Moving the
+only VPS host route to that path interrupts the otherwise healthy MQVPN
+connection on the surviving WAN.
+
+The patched `002-error` infers transport ownership from the explicit MQVPN path
+list. It moves the VPS host route only when a source-bound probe to the VPS
+succeeds through the sibling device. Whether that proof succeeds or fails, the
+handler exits before endpoint removal, disconnect hotplug, DNS flushing, or
+other destructive generic tracker recovery.
+
+### Bounded CID-exhaustion recovery
+
+Repeated path loss can temporarily exhaust xquic's peer connection-ID pool.
+The first `XQC_EMP_NO_AVAIL_PATH_ID` is still treated as transient because the
+peer may replenish IDs. Previously, however, an attached path in
+`CLOSED_RECOVERABLE` retried forever every three seconds without incrementing
+any recovery budget.
+
+MQVPN now enforces a stronger invariant: recovery of one failed path cannot
+close the shared connection while another validated path remains. CID/path
+budget exhaustion quarantines the failed path, administrative removal uses
+path-scoped PATH_ABANDON for every path ID, and removal of the final validated
+path is refused. The periodic reactivation loop is also bounded: five failed
+attempts quarantine only that path until a genuine link/address event starts a
+new recovery episode. A connection refresh remains available only when no
+validated sibling can carry the existing tunnel.
+
+### Empty redundant-replica root cause
+
+The remaining intermittent reconnect was not a tracker decision or a WAN
+failure. The redundant scheduler copied an ACK/ACK_MP-only packet and then
+removed the path-specific acknowledgement frame from the copy. That left a
+valid header with no QUIC frames. RFC 9000 requires every packet other than a
+Version Negotiation or Stateless Reset packet to contain at least one frame,
+so the receiver correctly closed the entire connection with
+`PROTOCOL_VIOLATION`.
+
+The correction rejects ACK-only packets before allocating a redundant copy.
+It is deliberately scheduler-local: acknowledgement processing is unchanged,
+data packets are still replicated, and neither path nor connection lifecycle
+logic is invoked. On the pinned revisions, the unpatched path-removal test was
+nondeterministic (6 passes and 4 protocol-close failures in 10 runs). The
+patched test passed 10 of 10 runs, the focused xquic suite passed 8 tests with
+64 assertions, and the complete MQVPN suite passed all 41 tests.
+
+### Silent-loss validation and the redundancy tradeoff
+
+A controlled test blocked only one path's MQVPN UDP traffic for 20 seconds
+while leaving the physical WAN and tracker healthy. WLB preserved the session
+but produced a 6.09-second tunnel-probe gap because it kept assigning packets to
+the silent path. Datagram reinjection reduced that gap but still lost two probe
+sequences. Neither result meets the commissioning requirement.
+
+The pinned xquic revision includes its newer `redundant` scheduler and the
+follow-up origin/replica cleanup fix. With that scheduler, the same 20-second
+silent loss on Starlink and cellular delivered every one of 32 unique tunnel
+probe sequences, with zero DNS or HTTPS failures and no MQVPN restart. Hard
+local socket errors on either WAN also remained path-scoped; the measured
+maximum probe gaps were 0.06 seconds on Starlink and 1.04 seconds on cellular.
+
+Redundant mode sends every tunnel packet on every usable path. It therefore
+uses roughly twice the WAN traffic, does not aggregate capacity, and can make
+diagnostic ICMP appear duplicated. TCP and QUIC consumers discard duplicates,
+but metered cellular usage must be considered. This build chooses continuity
+over aggregation because WLB did not satisfy the tested silent-loss gate.
+
 The upgrade must also migrate the old local scheduler policy. `backup` is not a
 supported MQVPN 0.14.1 scheduler; upstream supports `wlb`, `wlb_udp_pin`,
-`minrtt`, and experimental `backup_fec`. Preserving `scheduler=backup` plus
+`minrtt`, `redundant`, and experimental `backup_fec`. Preserving
+`scheduler=backup` plus
 separate `primary_path` and `backup_path` lists registered cellular but failed
 to schedule tunnel datagrams onto it during a Starlink black hole. The build
-now migrates that legacy shape to upstream-default `wlb` with both explicit
-paths active.
+now migrates that legacy shape to `redundant` with both explicit paths active.
+A clean install uses the same scheduler and disables separate reinjection,
+which would otherwise duplicate already duplicated traffic.
 
 ## WAN health policy
 
@@ -111,37 +183,28 @@ targets are a poor authority for cellular reachability. Some public resolvers
 rate-limit or ignore echo requests, and three consecutive ICMP failures can
 occur while application traffic is healthy.
 
-The commissioned policy uses source-bound DNS queries against three independent
-providers:
+Tracker remains useful for status and eventual administrative cleanup, but it
+is not the fast failover authority. The live Starlink policy probes the VPS
+conservatively:
 
 ```sh
-uci set omr-tracker.stable_dns='hosts_defaults'
-uci add_list omr-tracker.stable_dns.hosts='<cloudflare-dns-ipv4>'
-uci add_list omr-tracker.stable_dns.hosts='<google-public-dns-ipv4>'
-uci add_list omr-tracker.stable_dns.hosts='<quad9-dns-ipv4>'
-
-for interface in wan1 wan2; do
-	uci set "omr-tracker.${interface}=interface"
-	uci set "omr-tracker.${interface}.type=dns"
-	uci set "omr-tracker.${interface}.country=stable_dns"
-	uci set "omr-tracker.${interface}.timeout=2"
-	uci set "omr-tracker.${interface}.count=2"
-	uci set "omr-tracker.${interface}.tries=3"
-	uci set "omr-tracker.${interface}.tries_up=3"
-	uci set "omr-tracker.${interface}.interval=3"
-	uci set "omr-tracker.${interface}.interval_tries=1"
-	uci set "omr-tracker.${interface}.failure_interval=5"
-	uci set "omr-tracker.${interface}.restart_down=0"
-	uci set "omr-tracker.${interface}.family=ipv4"
-done
+uci set omr-tracker.wan1.timeout='2'
+uci set omr-tracker.wan1.count='2'
+uci set omr-tracker.wan1.tries='3'
+uci set omr-tracker.wan1.interval='5'
+uci set omr-tracker.wan1.interval_tries='2'
+uci set omr-tracker.wan1.failure_interval='10'
+uci set omr-tracker.wan1.tries_up='2'
 
 uci commit omr-tracker
 /etc/init.d/omr-tracker restart
 ```
 
-The DNS checks judge general WAN egress. MQVPN independently judges whether its
-UDP path to the VPS is usable. This avoids making an application-agnostic
-tracker the destructive owner of an established multipath connection.
+The cellular tracker already uses the same five-second cadence with five failed
+cycles before removal. In a 20-sample before/after measurement, the Starlink
+change reduced aggregate tracker CPU from 11.3% to 4.7% while MQVPN remained
+established with both paths. MQVPN redundancy covers traffic during that slower,
+deliberate administrative decision.
 
 ## Controlled validation
 
@@ -152,24 +215,47 @@ interfaces down, alter netifd state, or persist rules.
 | Simulated failure | Duration | ICMP tunnel probes | DNS/HTTPS | MQVPN PID |
 | --- | ---: | ---: | --- | --- |
 | Starlink black hole, legacy unsupported `backup` policy | 15 seconds | 0/15 | passed at end | unchanged |
-| Starlink black hole, corrected active WLB policy | 20 seconds | 18/20 | passed | unchanged |
-| Cellular black hole, corrected active WLB policy | 20 seconds | 15/20 | passed | unchanged |
+| Starlink MQVPN silent loss, redundant scheduler | 20 seconds | 32/32 unique | zero failures | unchanged |
+| Cellular MQVPN silent loss, redundant scheduler | 20 seconds | 32/32 unique | zero failures | unchanged |
+| Starlink hard local send error | 6 seconds | max gap 0.06 s | zero failures | unchanged |
+| Cellular hard local send error | 6 seconds | max gap 1.04 s | zero failures | unchanged |
 | Synthetic cellular tracker `ERROR` | immediate | no tunnel change | unchanged | unchanged |
+| Steady-state soak | 1,800 seconds | 1,800/1,800 unique | zero failures | unchanged |
 
-With active WLB, both live black-hole tests kept the connection established on
-the survivor and revalidated the path after traffic was restored. There was no
-MQVPN restart, reconnect cycle, tunnel reset, DNS failure, or HTTPS failure.
-Raw datagrams still experienced transition loss while QUIC detected the black
-hole; WLB is seamless at the session level, not packet duplication. TCP
-retransmission preserves SSH and web sessions across that short loss window.
+Both redundant-mode black-hole tests kept the connection established on the
+survivor and revalidated the path after traffic was restored. There was no
+MQVPN restart, reconnect cycle, tunnel reset, DNS failure, HTTPS failure, or
+missing unique probe sequence.
+
+After the fault-injection matrix, independent ten- and thirty-minute live soaks
+completed with both paths present. The longer run delivered 1,800/1,800 unique
+tunnel probes with zero DNS failures, zero HTTPS failures, no reconnect log,
+and the same MQVPN process. The cumulative `tun0` transmit-drop counter rose by
+eight during that longer run, while its fq qdisc reported zero drops and no
+probe, DNS, or HTTPS request was lost; an earlier fixed 60-second sample had no
+counter increase.
 
 The selected router MQVPN build does not enable FEC. Enabling
 `backup_fec` would require compatible client and server rebuilds and adds
 roughly one repair packet per three source packets with the pinned defaults.
-It remains experimental upstream and is not enabled silently. The commissioned
-`wlb` scheduler is upstream's recommendation for general use and asymmetric
-links; it keeps both WANs active and automatically weights them using loss,
-RTT, and congestion-window metrics.
+It remains experimental upstream and is not enabled silently. WLB remains the
+better aggregation profile when capacity matters more than zero-gap failover;
+this continuity profile intentionally accepts redundant-mode bandwidth cost.
+
+## Interpreting health diagnostics
+
+- Duplicate tunnel ping replies are expected in `redundant` mode. Judge the
+  test by missing unique sequence numbers, not raw received-packet count.
+- xquic BBR2 may log `cwnd compensation: weird things happened` when its
+  smoothed RTT is no greater than its stored minimum RTT. That branch returns
+  zero optional RTT-variance compensation; it does not close a path, reconnect,
+  or reduce the already computed window.
+- OpenWrt's firewall is a ruleset loader rather than a resident daemon, so
+  `/etc/init.d/firewall running` is not a reliable health test. Use `fw4 check`
+  and verify that the `inet fw4` nftables table exists.
+- A cumulative TUN drop counter is not evidence of an ongoing fault. Sample it
+  over a fixed steady-state interval and corroborate it with qdisc drops,
+  missing unique probes, DNS/HTTPS failures, and reconnect logs.
 
 ## PCIe power-management finding
 

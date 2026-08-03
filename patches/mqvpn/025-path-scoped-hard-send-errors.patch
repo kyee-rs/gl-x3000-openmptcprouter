@@ -1,0 +1,80 @@
+diff --git a/src/mqvpn_client.c b/src/mqvpn_client.c
+index 2f1b65d..e9d8c3a 100644
+--- a/src/mqvpn_client.c
++++ b/src/mqvpn_client.c
+@@ -1081,38 +1081,25 @@ cb_xqc_log_write(xqc_log_level_t lvl, const void *buf, size_t size, void *user_d
+ 
+ /* ─── UDP write callback (xquic → network) ─── */
+ 
+-/* Return code for a per-path send that failed on the transport socket.
+- *
+- * Per xquic's write_socket_ex contract (xquic.h xqc_socket_write_ex_pt),
+- * XQC_SOCKET_ERROR triggers xqc_conn_should_close(), which tears down the
+- * WHOLE connection once it is down to its last active path (active_path_count
+- * < 2).
+- *
+- * Design: a send error is NEVER taken as proof of path death. Path life is
+- * decided solely by the platform monitors (netlink_mon / route_mon), which
+- * detach a dead path (platform_attached=0, fd closed). While any path is
+- * still attached, a failed send is downgraded to EAGAIN (xquic keeps the
+- * connection and retries); only when the monitors have detached every path
+- * does the hard XQC_SOCKET_ERROR propagate and close/reconnect.
+- *
+- * Send errors are untrustworthy on macOS because IP_BOUND_IF does not
+- * restrict the route lookup to the bound device up front the way Linux's
+- * SO_BINDTODEVICE does — it validates interface consistency against a lookup
+- * on the SHARED routing tree. A failover on a DIFFERENT interface invalidates
+- * cached routes, forcing surviving sockets to re-run the lookup, and while
+- * the table is being reconstructed there may transiently be no route
+- * consistent with the bound scope: sendto() on a perfectly healthy path
+- * fails. This applies even to a sole remaining path (e.g. during the scoped
+- * server-pin re-install window), so the downgrade deliberately covers the
+- * single-path case too — do NOT "tighten" this guard to exclude the failing
+- * path itself; that reintroduces the ~5s full reconnect (new tunnel IP) on
+- * transient flux. Other platforms' sockets do not fail this way, so this
+- * branch rarely fires there. */
+-static ssize_t
+-path_send_dead_retcode(const mqvpn_client_t *c)
+-{
+-    return (mqvpn_client_first_active_fd(c) >= 0) ? XQC_SOCKET_EAGAIN : XQC_SOCKET_ERROR;
+-}
++/* The xquic callback contract reserves XQC_SOCKET_EAGAIN for real socket
++ * backpressure. Returning it for a hard error (EPERM, ENETDOWN, ENETUNREACH,
++ * EBADF, and similar) makes the engine retry the same dead path in a tight
++ * loop, starving the surviving path and flooding syslog.
++ *
++ * XQC_SOCKET_ERROR is path-scoped in xquic multipath: xqc_conn_should_close()
++ * immediately closes only the failed path while active_path_count >= 2. It
++ * closes the connection only when the failed path is the last active path.
++ * That is exactly the required failure boundary. Platform monitoring remains
++ * responsible for later path re-creation; a hard socket error must never be
++ * disguised as writable-socket backpressure. */
++static ssize_t
++path_send_hard_error(mqvpn_client_t *c, uint64_t path_id, int error_number)
++{
++    path_entry_t *p = find_path_by_xqc_id(c, path_id);
++    LOG_W(c, "hard socket send error on path %s: %s; closing failed xquic path",
++          p ? p->name : "?", strerror(error_number));
++    return XQC_SOCKET_ERROR;
++}
+ 
+ static ssize_t
+ cb_write_socket(const unsigned char *buf, size_t size, const struct sockaddr *peer,
+@@ -1155,7 +1142,7 @@ cb_write_socket_ex(uint64_t path_id, const unsigned char *buf, size_t size,
+     cli_conn_t *conn = (cli_conn_t *)conn_user_data;
+     mqvpn_client_t *c = conn->client;
+     int fd = get_fd_for_path(c, path_id);
+-    if (fd < 0) return path_send_dead_retcode(c);
++    if (fd < 0) return path_send_hard_error(c, path_id, EBADF);
+ 
+     ssize_t res;
+     do {
+@@ -1164,7 +1151,7 @@ cb_write_socket_ex(uint64_t path_id, const unsigned char *buf, size_t size,
+     } while (res < 0 && errno == EINTR);
+     if (res < 0) {
+         if (errno == EAGAIN || errno == EWOULDBLOCK) return XQC_SOCKET_EAGAIN;
+-        return path_send_dead_retcode(c);
++        return path_send_hard_error(c, path_id, errno);
+     }
+     c->bytes_tx += (uint64_t)res;
+     {

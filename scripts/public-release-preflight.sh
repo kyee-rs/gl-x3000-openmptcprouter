@@ -107,9 +107,9 @@ for pattern in "${metadata_patterns[@]}"; do
   fi
 done
 
-# Loopback, wildcard, and RFC 5737 TEST-NET addresses are safe package
-# defaults and documentation examples. Review every other literal IPv4 address
-# without printing its value.
+# Loopback, wildcard, RFC 5737 TEST-NET, and the public resolver/root-server
+# addresses present in the pinned upstream patch context are safe. Review every
+# other literal IPv4 address without printing its value.
 ipv4_pattern='\b([0-9]{1,3}\.){3}[0-9]{1,3}\b'
 ipv4_candidates="$(rg -l --no-ignore --hidden --glob '!.git/**' \
   --glob '!**/public-release-preflight.sh' -e "$ipv4_pattern" .)"
@@ -117,11 +117,14 @@ ipv4_matches=''
 while IFS= read -r path; do
   [[ -n "$path" ]] || continue
   if sed -E \
-      -e 's/0\.0\.0\.0//g' \
-      -e 's/127\.([0-9]{1,3}\.){2}[0-9]{1,3}//g' \
-      -e 's/192\.0\.2\.[0-9]{1,3}//g' \
-      -e 's/198\.51\.100\.[0-9]{1,3}//g' \
-      -e 's/203\.0\.113\.[0-9]{1,3}//g' \
+      -e 's/(^|[^0-9])0\.0\.0\.0([^0-9]|$)/\1\2/g' \
+      -e 's/(^|[^0-9])127\.([0-9]{1,3}\.){2}[0-9]{1,3}([^0-9]|$)/\1\3/g' \
+      -e 's/(^|[^0-9])192\.0\.2\.[0-9]{1,3}([^0-9]|$)/\1\2/g' \
+      -e 's/(^|[^0-9])198\.51\.100\.[0-9]{1,3}([^0-9]|$)/\1\2/g' \
+      -e 's/(^|[^0-9])203\.0\.113\.[0-9]{1,3}([^0-9]|$)/\1\2/g' \
+      -e 's/(^|[^0-9])1\.1\.1\.1([^0-9]|$)/\1\2/g' \
+      -e 's/(^|[^0-9])8\.8\.8\.8([^0-9]|$)/\1\2/g' \
+      -e 's/(^|[^0-9])198\.41\.0\.4([^0-9]|$)/\1\2/g' \
       "$path" | rg -q -e "$ipv4_pattern"; then
     ipv4_matches+="${path}"$'\n'
   fi

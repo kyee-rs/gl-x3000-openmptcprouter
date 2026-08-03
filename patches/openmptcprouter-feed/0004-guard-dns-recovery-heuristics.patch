@@ -1,0 +1,39 @@
+diff --git a/omr-schedule/Makefile b/omr-schedule/Makefile
+index 4537632..441a85b 100644
+--- a/omr-schedule/Makefile
++++ b/omr-schedule/Makefile
+@@ -9,7 +9,7 @@ include $(TOPDIR)/rules.mk
+ 
+ PKG_NAME:=omr-schedule
+ PKG_VERSION:=0.1
+-PKG_RELEASE:=1
++PKG_RELEASE:=2
+ 
+ include $(INCLUDE_DIR)/package.mk
+ 
+diff --git a/omr-schedule/files/usr/share/omr/schedule.d/010-services b/omr-schedule/files/usr/share/omr/schedule.d/010-services
+index 8c3db40..b20e0dc 100755
+--- a/omr-schedule/files/usr/share/omr/schedule.d/010-services
++++ b/omr-schedule/files/usr/share/omr/schedule.d/010-services
+@@ -160,8 +160,8 @@ if [ -f /etc/init.d/unbound ] && [ "$(uci -q get unbound.@unbound[0].enabled)"
+ 	if [ "$(pgrep -f unbound)" = "" ]; then
+ 		_log "Can't find unbound, restart it..."
+ 		/etc/init.d/unbound restart >/dev/null 2>&1
+ 		sleep 5
+-	elif [ "$(uci -q get openmptcprouter.settings.external_check)" != "0" ] && [ "$(uci -q get unbound.ub_main.listen_port)" = "5353" ] && [ -n "$(dig +timeout=4 +tries=2 openmptcprouter.com -p 5353 | grep 'ANSWER: 0')" ]; then
++	elif [ "$(uci -q get openmptcprouter.settings.dns_health_autorestart)" = "1" ] && [ "$(uci -q get openmptcprouter.settings.external_check)" != "0" ] && [ "$(uci -q get unbound.ub_main.listen_port)" = "5353" ] && [ -n "$(dig +timeout=4 +tries=2 openmptcprouter.com -p 5353 | grep 'ANSWER: 0')" ]; then
+ 		_log "Can't resolve via unbound, restart it..."
+ 		/etc/init.d/unbound restart >/dev/null 2>&1
+ 		sleep 5
+@@ -168,7 +168,10 @@ if [ -f /etc/init.d/unbound ] && [ "$(uci -q get unbound.@unbound[0].enabled)"
+ 	fi
+ fi
+ 
+-if [ -f /etc/init.d/unbound ] && [ "$(uci -q get unbound.@unbound[0].enabled)" = "1" ] && [ "$(uci -q get openmptcprouter.settings.external_check)" != "0" ]; then
++# Direct-WAN DNS probes are noisy on multipath links. Keep the legacy
++# resolver-switch heuristic available only as an explicit opt-in so one
++# dropped probe cannot restart LAN DNS during otherwise healthy tunnel use.
++if [ -f /etc/init.d/unbound ] && [ "$(uci -q get unbound.@unbound[0].enabled)" = "1" ] && [ "$(uci -q get openmptcprouter.settings.external_check)" != "0" ] && [ "$(uci -q get openmptcprouter.settings.dns_hijack_autoswitch)" = "1" ]; then
+ 	ROOT_CHECK=$(dig +short +time=3 +tries=1 google.fr @198.41.0.4 2>/dev/null)
+ 	if [ -n "$ROOT_CHECK" ] && [ -z "$(uci -q get dhcp.dnsmasq1.server | grep '1\.1\.1\.1')" ]; then
+ 		_log "DNS port 53 hijacked by ISP, bypass unbound and use 1.1.1.1..."

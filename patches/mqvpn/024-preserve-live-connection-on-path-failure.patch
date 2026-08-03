@@ -1,0 +1,313 @@
+diff --git a/src/mqvpn_client.c b/src/mqvpn_client.c
+index b5d47bd..2f1b65d 100644
+--- a/src/mqvpn_client.c
++++ b/src/mqvpn_client.c
+@@ -980,10 +980,24 @@ client_arm_reconnect_timer(mqvpn_client_t *c)
+     return delay;
+ }
+ 
++static int
++client_find_validated_sibling(const mqvpn_client_t *c, int failed_idx)
++{
++    for (int i = 0; i < c->n_paths; i++) {
++        const path_entry_t *candidate = &c->paths[i];
++        if (i == failed_idx || !candidate->platform_attached || !candidate->xquic_path_live)
++            continue;
++        if (candidate->state == PATH_LC_ACTIVE || candidate->state == PATH_LC_STANDBY)
++            return i;
++    }
++    return -1;
++}
++
+ /*
+- * xquic path budget is connection-scoped (XQC_MAX_PATHS_COUNT).
+- * When exhausted, additional path creation cannot recover in-place; force a
+- * clean reconnect so counters/CIDs are reinitialized.
++ * xquic path budget is connection-scoped (XQC_MAX_PATHS_COUNT). A reconnect
++ * can refresh it, but doing that while another validated path is carrying
++ * traffic turns a secondary-path recovery problem into a total outage.
++ * Preserve the live connection and quarantine the failed path instead.
+  */
+ static void
+ client_force_reconnect_on_path_budget_exhausted(mqvpn_client_t *c, path_entry_t *p,
+@@ -994,6 +1008,16 @@ client_force_reconnect_on_path_budget_exhausted(mqvpn_client_t *c, path_entry_t
+         c->state == MQVPN_STATE_CLOSED)
+         return;
+ 
++    int sibling_idx = client_find_validated_sibling(c, idx);
++    if (!mqvpn_path_budget_should_reconnect(sibling_idx >= 0)) {
++        LOG_W(c,
++              "path[%d] create-path budget exhausted on %s (ret=%d); "
++              "preserving validated sibling path[%d] %s",
++              idx, p ? p->name : "?", ret, sibling_idx,
++              c->paths[sibling_idx].name);
++        return;
++    }
++
+     if (!c->config.reconnect_enable) {
+         LOG_W(c,
+               "path[%d] create-path budget exhausted on %s (ret=%d), "
+@@ -2361,6 +2385,9 @@ client_activate_path(mqvpn_client_t *c, path_entry_t *p, int idx)
+         .now_us = client_now_us(c),
+     };
+     path_on_event(c, p, PATH_EVENT_ACTIVATE_REQUESTED, &ctx);
++    if (r == ACTIVATE_PERMANENT_FAIL)
++        client_force_reconnect_on_path_budget_exhausted(
++            c, p, idx, -XQC_EMP_CREATE_PATH);
+ }
+ 
+ /* Activate every path currently in PATH_LC_PENDING.
+@@ -3311,33 +3338,22 @@ mqvpn_client_remove_path(mqvpn_client_t *c, mqvpn_path_handle_t path)
+     if (!p) return MQVPN_ERR_INVALID_ARG;
+     if (p->state == PATH_LC_CLOSED_FREE) return MQVPN_OK;
+ 
+-    /* Spec §5.0: REMOVE_API allows orderly xquic close. Issue before
+-     * dispatch so the FSM stays xquic-API-free (avoids layer leak).
+-     *
+-     * path_id=0 is the initial QUIC path (used for the TLS handshake).
+-     * xqc_conn_close_path(path_id=0) may return XQC_OK but leaves xquic's
+-     * multipath scheduler in a state where it stops forwarding DATA datagrams
+-     * on the remaining paths until the next 15-second PING keepalive fires.
+-     * This causes a ~15-second black-hole that is worse than a full reconnect.
+-     * Always use xqc_h3_conn_close() for path_id=0 so tick_reconnect()
+-     * rebuilds the connection on a secondary path (~5-7 s) with fresh
+-     * congestion state and immediate data flow.
+-     *
+-     * For secondary paths (path_id>0) xqc_conn_close_path() works correctly:
+-     * the primary path (path_id=0) keeps forwarding data without interruption.
+-     * Only fall back to xqc_h3_conn_close() if the secondary close fails. */
++    /* Administrative removal is path-scoped, including path_id=0. Never
++     * convert it to a connection close while a validated sibling is carrying
++     * traffic. The xquic scheduler keeps using the remaining live path, so
++     * traffic continues without a connection-level reconnect. */
+     if (path_xquic_abandon_due(p) && c->engine && c->conn) {
+-        if (p->xqc_path_id == 0) {
+-            LOG_I(c, "removing initial path (path_id=0 iface=%s): "
+-                  "closing connection for clean failover to secondary", p->name);
+-            xqc_h3_conn_close(c->engine, &c->conn->cid);
+-        } else {
+-            xqc_int_t rc = xqc_conn_close_path(c->engine, &c->conn->cid, p->xqc_path_id);
+-            if (rc != XQC_OK) {
+-                LOG_W(c, "xqc_conn_close_path(path_id=%" PRIu64 ") rc=%d; "
+-                      "closing connection to force clean failover", p->xqc_path_id, (int)rc);
+-                xqc_h3_conn_close(c->engine, &c->conn->cid);
+-            }
++        int idx = (int)(p - c->paths);
++        if (client_find_validated_sibling(c, idx) < 0) {
++            LOG_W(c, "refusing removal of final validated path: %s", p->name);
++            return MQVPN_ERR_INVALID_STATE;
++        }
++
++        xqc_int_t rc = xqc_conn_close_path(c->engine, &c->conn->cid, p->xqc_path_id);
++        if (rc != XQC_OK) {
++            LOG_W(c, "refusing path removal: xqc_conn_close_path(path_id=%" PRIu64
++                  ") rc=%d", p->xqc_path_id, (int)rc);
++            return MQVPN_ERR_ENGINE;
+         }
+     }
+
+@@ -3447,6 +3463,9 @@ mqvpn_client_reactivate_path(mqvpn_client_t *c, mqvpn_path_handle_t handle)
+         .now_us = client_now_us(c),
+     };
+     path_on_event(c, p, PATH_EVENT_MANUAL_REACTIVATE, &ctx);
++    if (r == ACTIVATE_PERMANENT_FAIL)
++        client_force_reconnect_on_path_budget_exhausted(
++            c, p, (int)(p - c->paths), -XQC_EMP_CREATE_PATH);
+ 
+     /* path_on_event(MANUAL_REACTIVATE) lands the slot in VALIDATING on OK,
+      * or leaves state unchanged on TRANSIENT/PERMANENT. */
+@@ -3870,6 +3889,9 @@ tick_drive_retry_timer(mqvpn_client_t *c, path_entry_t *p, int idx, uint64_t now
+         .now_us = now,
+     };
+     path_on_event(c, p, PATH_EVENT_RETRY_TIMER, &ctx);
++    if (r == ACTIVATE_PERMANENT_FAIL)
++        client_force_reconnect_on_path_budget_exhausted(
++            c, p, idx, -XQC_EMP_CREATE_PATH);
+     /* Note: the old code set p->path_stable_since_us to `now` after success
+      * here, but that violated the VALIDATING invariant (path_stable_since_us
+      * must be 0 in VALIDATING). The stability-timer anchor is now set on
+diff --git a/src/path_error_policy.c b/src/path_error_policy.c
+index 1491249..696ef9b 100644
+--- a/src/path_error_policy.c
++++ b/src/path_error_policy.c
+@@ -11,3 +11,23 @@ mqvpn_path_error_is_create_budget_exhausted(int xqc_ret)
+ {
+     return xqc_ret == -XQC_EMP_CREATE_PATH;
+ }
++
++bool
++mqvpn_path_budget_should_reconnect(bool has_validated_sibling)
++{
++    return !has_validated_sibling;
++}
++
++int
++mqvpn_path_recovery_record_failure(int failures, int limit)
++{
++    if (limit <= 0) return 0;
++    if (failures < 0) failures = 0;
++    return failures < limit ? failures + 1 : limit;
++}
++
++bool
++mqvpn_path_recovery_can_retry(int failures, int limit)
++{
++    return limit > 0 && failures < limit;
++}
+diff --git a/src/path_error_policy.h b/src/path_error_policy.h
+index 9c8cdd1..04e2718 100644
+--- a/src/path_error_policy.h
++++ b/src/path_error_policy.h
+@@ -14,4 +14,16 @@
+  */
+ bool mqvpn_path_error_is_create_budget_exhausted(int xqc_ret);
+ 
++/* A connection refresh is permitted only when no validated sibling can keep
++ * the current tunnel alive. Path recovery must never tear down healthy
++ * transport merely to reclaim a failed secondary path's CID budget. */
++bool mqvpn_path_budget_should_reconnect(bool has_validated_sibling);
++
++/* Saturating backpressure for platform recovery loops. A failed path may
++ * consume path IDs/CIDs while a healthy sibling is still carrying traffic;
++ * cap automatic retries without escalating that local failure into a
++ * connection-wide close. */
++int mqvpn_path_recovery_record_failure(int failures, int limit);
++bool mqvpn_path_recovery_can_retry(int failures, int limit);
++
+ #endif /* MQVPN_PATH_ERROR_POLICY_H */
+diff --git a/src/platform/linux/platform_linux.c b/src/platform/linux/platform_linux.c
+index 8cc3dc2..7ac19e3 100644
+--- a/src/platform/linux/platform_linux.c
++++ b/src/platform/linux/platform_linux.c
+@@ -558,15 +558,20 @@ platform_remove_path(platform_ctx_t *p, const char *iface)
+     }
+     if (idx < 0) return -1;
+ 
+-    /* Save handle before compact so we can notify the library after fd close */
++    /* Keep the platform path intact unless xquic accepts the path-scoped
++     * removal. In particular, never close the fd after the library refuses
++     * removal of the final validated path. */
+     mqvpn_path_handle_t removed_handle = p->lib_path_handles[idx];
++    if (mqvpn_client_remove_path(p->client, removed_handle) != MQVPN_OK) {
++        LOG_WRN("path removal refused by transport: %s", iface);
++        return -1;
++    }
+ 
+-    /* Tear down libevent + library before closing fd */
++    /* Tear down libevent before closing fd. */
+     if (p->ev_udp[idx]) {
+         event_del(p->ev_udp[idx]);
+         event_free(p->ev_udp[idx]);
+     }
+-    mqvpn_client_remove_path(p->client, removed_handle);
+ 
+     /* Compact ev_udp and lib_path_handles in parallel with path_mgr */
+     for (int i = idx; i < p->path_mgr.n_paths - 1; i++) {
+diff --git a/tests/test_path_error_policy.c b/tests/test_path_error_policy.c
+index c0bca3c..c2ddfbc 100644
+--- a/tests/test_path_error_policy.c
++++ b/tests/test_path_error_policy.c
+@@ -58,6 +58,22 @@ TEST(non_negative_or_unrelated_codes_do_not_trigger)
+     ASSERT_FALSE(mqvpn_path_error_is_create_budget_exhausted(-1));
+ }
+ 
++TEST(validated_sibling_forbids_connection_reconnect)
++{
++    ASSERT_FALSE(mqvpn_path_budget_should_reconnect(true));
++    ASSERT_TRUE(mqvpn_path_budget_should_reconnect(false));
++}
++
++TEST(path_recovery_failures_saturate_without_connection_escalation)
++{
++    int failures = 0;
++    for (int i = 0; i < 20; i++)
++        failures = mqvpn_path_recovery_record_failure(failures, 5);
++    ASSERT_TRUE(failures == 5);
++    ASSERT_FALSE(mqvpn_path_recovery_can_retry(failures, 5));
++    ASSERT_TRUE(mqvpn_path_recovery_can_retry(4, 5));
++}
++
+ int
+ main(void)
+ {
+@@ -66,6 +82,8 @@ main(void)
+     run_create_path_error_triggers_budget_exhausted_policy();
+     run_other_multipath_errors_do_not_trigger_budget_exhausted_policy();
+     run_non_negative_or_unrelated_codes_do_not_trigger();
++    run_validated_sibling_forbids_connection_reconnect();
++    run_path_recovery_failures_saturate_without_connection_escalation();
+ 
+     printf("[test_path_error_policy] Passed %d/%d tests\n", g_passed, g_run);
+     return (g_passed == g_run) ? 0 : 1;
+diff --git a/src/platform/linux/netlink_mon.c b/src/platform/linux/netlink_mon.c
+index 3f24f54..8025fe2 100644
+--- a/src/platform/linux/netlink_mon.c
++++ b/src/platform/linux/netlink_mon.c
+@@ -16,6 +16,7 @@
+ #include "platform_internal.h"
+ #include "netlink_mon.h"
+ #include "log.h"
++#include "path_error_policy.h"
+ 
+ #include <stdio.h>
+ #include <stdlib.h>
+@@ -229,15 +230,41 @@ try_reactivate_by_ifname(platform_ctx_t *p, const char *ifname)
+ 
+         int ret = mqvpn_client_reactivate_path(p->client, h);
+         if (ret == MQVPN_OK) {
++            p->path_recover_failures[i] = 0;
+             LOG_INF("netlink: reactivated path %s", ifname);
+         } else if (ret == MQVPN_ERR_INVALID_STATE) {
+             /* slot not in 3-state acceptance window (e.g. already VALIDATING) */
+         } else {
+-            LOG_WRN("netlink: reactivate %s failed: %s", ifname, mqvpn_error_string(ret));
++            p->path_recover_failures[i] = mqvpn_path_recovery_record_failure(
++                p->path_recover_failures[i], PATH_RECOVER_FAILURE_LIMIT);
++            if (!mqvpn_path_recovery_can_retry(p->path_recover_failures[i],
++                                                PATH_RECOVER_FAILURE_LIMIT)) {
++                LOG_WRN("netlink: reactivate %s quarantined after %d failures; "
++                        "healthy sibling remains live, waiting for a fresh "
++                        "link/address event",
++                        ifname, PATH_RECOVER_FAILURE_LIMIT);
++            } else {
++                LOG_WRN("netlink: reactivate %s failed: %s (%d/%d)", ifname,
++                        mqvpn_error_string(ret), p->path_recover_failures[i],
++                        PATH_RECOVER_FAILURE_LIMIT);
++            }
+         }
+     }
+ }
+ 
++/* A genuine kernel link/address event starts a new bounded recovery episode.
++ * Periodic polling never calls this helper, so an unchanged failed path is
++ * quarantined after PATH_RECOVER_FAILURE_LIMIT attempts instead of consuming
++ * path IDs forever. */
++static void
++reset_recovery_budget_by_ifname(platform_ctx_t *p, const char *ifname)
++{
++    for (int i = 0; i < p->path_mgr.n_paths; i++) {
++        if (strcmp(p->path_mgr.paths[i].iface, ifname) == 0)
++            p->path_recover_failures[i] = 0;
++    }
++}
++
+ /* Create a UDP socket bound to the wildcard address and pinned to ifname.
+  * Updates mp->local_addr / mp->local_addrlen on success.
+  * Returns the new fd, or -1 (already logged). */
+@@ -562,6 +589,7 @@ handle_rtm_newaddr(platform_ctx_t *p, struct nlmsghdr *nh)
+     struct ifaddrmsg *ifa = (struct ifaddrmsg *)NLMSG_DATA(nh);
+     char ifname[IFNAMSIZ];
+     if (!if_indextoname(ifa->ifa_index, ifname)) return;
++    reset_recovery_budget_by_ifname(p, ifname);
+     if (!try_readd_removed_path(p, ifname)) try_reactivate_by_ifname(p, ifname);
+ }
+ 
+@@ -671,6 +699,8 @@ handle_rtm_newlink(platform_ctx_t *p, struct nlmsghdr *nh)
+     if (!(ifi->ifi_flags & IFF_RUNNING)) return;
+     if (iface_has_usable_ip(ifname, p->server_addr.ss_family) != 1) return;
+ 
++    reset_recovery_budget_by_ifname(p, ifname);
++
+     /* First: try to re-add paths removed by RTM_DELLINK (dead fd).
+      * Otherwise: reactivate degraded/closed paths (fd still valid). */
+     if (try_readd_removed_path(p, ifname)) return;

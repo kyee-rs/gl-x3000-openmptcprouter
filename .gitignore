@@ -96,6 +96,7 @@
 *.squashfs
 *.apk
 *.ipk
+*.manifest
 *.ko
 *.o
 *.a
