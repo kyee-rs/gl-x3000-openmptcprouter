@@ -12,6 +12,7 @@ These notes describe a sanitized research path for PCIe cellular support on the 
 - [Runtime commissioning](runtime-commissioning.md): sanitized LAN bridging, Wi-Fi DHCP, ModemManager, and OMR tunnel integration lessons.
 - [Connectivity continuity](connectivity-continuity.md): tracker/MQVPN ownership, root-cause analysis, WAN health policy, and controlled failover results.
 - [MQVPN VPS integration](mqvpn-vps-integration.md): host forwarding, guest firewall/NAT, tunnel naming, verification, and persistence requirements.
+- [Field diagnostics](field-diagnostics.md): sanitized live-deployment regressions, tracker fork cost, radio-technology correlation, and revalidation results.
 - [References](references.md): primary sources and attribution policy.
 
 ## Publication boundary

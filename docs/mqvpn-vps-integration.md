@@ -56,6 +56,16 @@ After updating an allow-list rule, remove the obsolete narrower rule before
 installing the replacement. Otherwise both remain active until the next clean
 firewall recreation.
 
+Verify ordering, not merely presence. Libvirt recreates its own established
+accept and blanket rejection when its network is restarted or the daemon
+reconnects, and the recreated rules are placed above previously inserted ones.
+The narrow accepts then sit below the rejection while still being present in
+the chain. An already-established tunnel continues to match the established
+accept and keeps working, so the fault stays hidden until the next handshake,
+at which point the tunnel cannot be re-established at all. Compare rule
+positions after any host network or hypervisor restart, and re-run the
+forwarding helper to reinsert the accepts at the head of the chain.
+
 ## OMR VM configuration
 
 The server requires:
